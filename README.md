@@ -68,4 +68,4 @@ This means your private key stays where you already keep it. `bypass` only ever 
 
 ## License
 
-Dual-licensed under MIT or Apache 2.0, at your option.
+Licensed under the [GNU General Public License, version 3](LICENSE) or (at your option) any later version (`GPL-3.0-or-later`).
