@@ -4,6 +4,7 @@ mod cli;
 mod crypto_gpg;
 mod doctor;
 mod storage_fs;
+mod tree;
 
 use std::io::{self, Read, Write};
 use std::process::ExitCode;
@@ -66,9 +67,55 @@ fn dispatch() -> Result<u8> {
             }
             Ok(0)
         }
-        Command::Ls { .. } => bail!("`ls` is not implemented yet"),
-        Command::Find { .. } => bail!("`find` is not implemented yet"),
-        Command::Rm { .. } => bail!("`rm` is not implemented yet"),
+        Command::Ls { subpath } => {
+            let store = open_store()?;
+            let sub = subpath.as_deref().map(parse_entry).transpose()?;
+            let entries = store.list(sub.as_ref()).map_err(map_store_err)?;
+            let (display_entries, header_owned);
+            let header: &str = match &sub {
+                Some(p) => {
+                    let prefix = format!("{}/", p.as_str());
+                    display_entries = entries
+                        .iter()
+                        .filter_map(|e| {
+                            e.as_str()
+                                .strip_prefix(&prefix)
+                                .and_then(|s| RelPath::new(s).ok())
+                        })
+                        .collect::<Vec<_>>();
+                    header_owned = format!("{}/", p.as_str());
+                    &header_owned
+                }
+                None => {
+                    display_entries = entries;
+                    "Password Store"
+                }
+            };
+            print!("{}", tree::render(&display_entries, header));
+            Ok(0)
+        }
+        Command::Find { pattern } => {
+            let store = open_store()?;
+            let entries = store.find(&pattern).map_err(map_store_err)?;
+            for e in entries {
+                println!("{e}");
+            }
+            Ok(0)
+        }
+        Command::Rm { path, recursive } => {
+            let target = parse_entry(&path)?;
+            let mut store = open_store()?;
+            if recursive {
+                let removed = store.remove_recursive(&target).map_err(map_store_err)?;
+                for entry in &removed {
+                    eprintln!("removed {entry}");
+                }
+            } else {
+                store.remove(&target).map_err(map_store_err)?;
+                eprintln!("removed {target}");
+            }
+            Ok(0)
+        }
         Command::Edit { .. } => bail!("`edit` is not implemented yet"),
         Command::Cp { .. } => bail!("`cp` is not implemented yet"),
         Command::Mv { .. } => bail!("`mv` is not implemented yet"),

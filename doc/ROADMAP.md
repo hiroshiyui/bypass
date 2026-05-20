@@ -79,10 +79,10 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] `bypass init <gpg-id>` — write `.gpg-id`, optional `git init`
 - [x] `bypass insert <path>` — read password from stdin/tty, encrypt, write
 - [x] `bypass show <path>` — decrypt and print
-- [ ] `bypass ls [subpath]` — pretty tree of entries (rendering in CLI)
-- [ ] `bypass find <pattern>` — search entry names
+- [x] `bypass ls [subpath]` — pretty tree of entries (rendering in CLI)
+- [x] `bypass find <pattern>` — search entry names
 - [x] `bypass doctor` — read-only check of environment (gpg, keyring, store root, .gpg-id, $EDITOR, git)
-- [ ] `bypass rm <path>` — delete entry (shred-style on `StorageFs`; see ADR-0008)
+- [x] `bypass rm <path>` — delete entry (shred-style on `StorageFs`; see ADR-0008)
 - [ ] `bypass edit <path>` — decrypt to tempfile, open `$EDITOR`, re-encrypt
 - [ ] `bypass cp` / `bypass mv` — copy/move entries with re-encryption if needed
 
