@@ -48,3 +48,32 @@ pub trait VersionControl {
     /// acceptable for now; pagination can be added later if needed.
     fn log(&self, path: &RelPath) -> Result<Vec<Commit>, Self::Error>;
 }
+
+/// A no-op [`VersionControl`] for stores that should not be versioned.
+///
+/// Frontends construct `Store::new(crypto, storage, NoVcs)` when the user
+/// has disabled git, when the platform has no filesystem, or — during
+/// Phase 1 — while the real `Git2Vcs` impl is still pending. Every method
+/// succeeds without doing anything; `is_initialized` reports `false`.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoVcs;
+
+impl VersionControl for NoVcs {
+    type Error = std::convert::Infallible;
+
+    fn init(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn is_initialized(&self) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
+
+    fn commit(&mut self, _paths: &[RelPath], _message: &str) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn log(&self, _path: &RelPath) -> Result<Vec<Commit>, Self::Error> {
+        Ok(Vec::new())
+    }
+}

@@ -92,4 +92,7 @@ pub enum Command {
         #[arg(short, long)]
         force: bool,
     },
+
+    /// Check the environment: gpg, keyring, store, recipients, $EDITOR, git.
+    Doctor,
 }

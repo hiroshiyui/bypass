@@ -26,3 +26,4 @@ Process and conventions are defined in
 | 0005 | [License under GPL-3.0-or-later with SPDX headers](0005-gpl-license-with-spdx-headers.md) | Accepted |
 | 0006 | [Associated `Error` types on core traits](0006-trait-associated-error-types.md) | Accepted |
 | 0007 | [`RelPath` newtype with traversal-safety invariants](0007-relpath-traversal-safety.md) | Accepted |
+| 0008 | [Secure-delete via overwrite in `StorageFs::remove`](0008-secure-delete-via-overwrite.md) | Accepted |

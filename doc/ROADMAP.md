@@ -75,13 +75,14 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] Unit tests against a throwaway GPG keyring (temp `GNUPGHOME`)
 
 ### Milestone 1.3: Core CRUD — `Store` in `bypass-core`, CLI dispatch in `bypass-cli`
-- [ ] `bypass-core::store`: resolve store root (`PASSWORD_STORE_DIR` or `~/.password-store`) via the Storage trait
-- [ ] `bypass init <gpg-id>` — write `.gpg-id`, optional `git init`
-- [ ] `bypass insert <path>` — read password from stdin/tty, encrypt, write
-- [ ] `bypass show <path>` — decrypt and print
+- [x] `bypass-core::store`: resolve store root (`PASSWORD_STORE_DIR` or `~/.password-store`) via the Storage trait
+- [x] `bypass init <gpg-id>` — write `.gpg-id`, optional `git init`
+- [x] `bypass insert <path>` — read password from stdin/tty, encrypt, write
+- [x] `bypass show <path>` — decrypt and print
 - [ ] `bypass ls [subpath]` — pretty tree of entries (rendering in CLI)
 - [ ] `bypass find <pattern>` — search entry names
-- [ ] `bypass rm <path>` — delete entry
+- [x] `bypass doctor` — read-only check of environment (gpg, keyring, store root, .gpg-id, $EDITOR, git)
+- [ ] `bypass rm <path>` — delete entry (shred-style on `StorageFs`; see ADR-0008)
 - [ ] `bypass edit <path>` — decrypt to tempfile, open `$EDITOR`, re-encrypt
 - [ ] `bypass cp` / `bypass mv` — copy/move entries with re-encryption if needed
 

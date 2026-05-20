@@ -11,10 +11,6 @@
 //! plaintext or ciphertext through stdin, capture stdout as the result.
 //! No persistent process, no global state.
 
-// `GpgCli` and `GpgError` are constructed by tests today and will be
-// wired into the CLI dispatch in Milestone 1.3.
-#![allow(dead_code)]
-
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
@@ -67,6 +63,7 @@ impl GpgCli {
 
     /// Override the `GNUPGHOME` directory passed to `gpg --homedir`.
     /// Primarily for tests against a throwaway keyring.
+    #[allow(dead_code)] // used in tests; main.rs uses the default homedir
     pub fn with_homedir(mut self, homedir: PathBuf) -> Self {
         self.homedir = Some(homedir);
         self
