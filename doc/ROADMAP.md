@@ -53,9 +53,9 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] Convert root to a Cargo workspace
 - [x] Create `bypass-core` crate with module skeletons
 - [x] Move CLI binary into `bypass-cli` crate
-- [ ] Define `Crypto`, `Storage`, `VersionControl` traits in `bypass-core`
-- [ ] Define `RelPath` newtype with traversal-safety invariants
-- [ ] Define `SecretBytes` (zeroize-wrapped) and core error types
+- [x] Define `Crypto`, `Storage`, `VersionControl` traits in `bypass-core`
+- [x] Define `RelPath` newtype with traversal-safety invariants
+- [x] Define `SecretBytes` (zeroize-wrapped) and core error types
 
 ---
 
