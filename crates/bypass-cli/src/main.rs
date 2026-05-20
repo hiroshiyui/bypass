@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod cli;
+mod crypto_gpg;
 
 use anyhow::{Result, bail};
 use clap::Parser;

@@ -69,10 +69,10 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] Confirm `.gitignore` covers `target/` and any test fixtures
 
 ### Milestone 1.2: GPG crypto path — `crypto_gpg` in `bypass-cli` against `Crypto` in `bypass-core`
-- [ ] `crypto_gpg.rs`: `encrypt(plaintext, recipients) -> Vec<u8>` via `gpg` subprocess
-- [ ] `crypto_gpg.rs`: `decrypt(ciphertext) -> SecretBytes` (zeroized)
-- [ ] `bypass-core::gpg_id`: resolve recipient list by walking `.gpg-id` up the tree
-- [ ] Unit tests against a throwaway GPG keyring (temp `GNUPGHOME`)
+- [x] `crypto_gpg.rs`: `encrypt(plaintext, recipients) -> Vec<u8>` via `gpg` subprocess
+- [x] `crypto_gpg.rs`: `decrypt(ciphertext) -> SecretBytes` (zeroized)
+- [x] `bypass-core::gpg_id`: resolve recipient list by walking `.gpg-id` up the tree
+- [x] Unit tests against a throwaway GPG keyring (temp `GNUPGHOME`)
 
 ### Milestone 1.3: Core CRUD — `Store` in `bypass-core`, CLI dispatch in `bypass-cli`
 - [ ] `bypass-core::store`: resolve store root (`PASSWORD_STORE_DIR` or `~/.password-store`) via the Storage trait
