@@ -83,8 +83,8 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] `bypass find <pattern>` — search entry names
 - [x] `bypass doctor` — read-only check of environment (gpg, keyring, store root, .gpg-id, $EDITOR, git)
 - [x] `bypass rm <path>` — delete entry (shred-style on `StorageFs`; see ADR-0008)
-- [ ] `bypass edit <path>` — decrypt to tempfile, open `$EDITOR`, re-encrypt
-- [ ] `bypass cp` / `bypass mv` — copy/move entries with re-encryption if needed
+- [x] `bypass edit <path>` — decrypt to tempfile, open `$EDITOR`, re-encrypt
+- [x] `bypass cp` / `bypass mv` — copy/move entries with re-encryption if needed
 
 ---
 

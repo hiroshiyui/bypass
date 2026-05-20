@@ -3,6 +3,7 @@
 mod cli;
 mod crypto_gpg;
 mod doctor;
+mod edit;
 mod storage_fs;
 mod tree;
 
@@ -116,9 +117,32 @@ fn dispatch() -> Result<u8> {
             }
             Ok(0)
         }
-        Command::Edit { .. } => bail!("`edit` is not implemented yet"),
-        Command::Cp { .. } => bail!("`cp` is not implemented yet"),
-        Command::Mv { .. } => bail!("`mv` is not implemented yet"),
+        Command::Edit { path } => {
+            let entry = parse_entry(&path)?;
+            let mut store = open_store()?;
+            edit::run(&mut store, &entry)?;
+            Ok(0)
+        }
+        Command::Cp { from, to, force } => {
+            let from_entry = parse_entry(&from)?;
+            let to_entry = parse_entry(&to)?;
+            let mut store = open_store()?;
+            store
+                .copy(&from_entry, &to_entry, force)
+                .map_err(map_store_err)?;
+            eprintln!("copied {from_entry} to {to_entry}");
+            Ok(0)
+        }
+        Command::Mv { from, to, force } => {
+            let from_entry = parse_entry(&from)?;
+            let to_entry = parse_entry(&to)?;
+            let mut store = open_store()?;
+            store
+                .rename(&from_entry, &to_entry, force)
+                .map_err(map_store_err)?;
+            eprintln!("renamed {from_entry} to {to_entry}");
+            Ok(0)
+        }
     }
 }
 

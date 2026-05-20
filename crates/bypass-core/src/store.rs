@@ -198,6 +198,83 @@ where
         Ok(())
     }
 
+    /// Copy `from` to `to`. If both paths resolve to the same recipient
+    /// set the ciphertext is byte-copied; otherwise the entry is
+    /// decrypted with the recipients in scope for `from` and re-encrypted
+    /// to those in scope for `to`. Returns `AlreadyExists` if `to` exists
+    /// and `overwrite` is `false`; `NotFound` if `from` does not exist.
+    pub fn copy(&mut self, from: &RelPath, to: &RelPath, overwrite: bool) -> Result<(), C, S, V> {
+        let to_blob = self.transfer_blob(from, to, overwrite)?;
+        self.vcs
+            .commit(&[to_blob], &format!("bypass: Copy {from} to {to}"))
+            .map_err(StoreError::Vcs)?;
+        Ok(())
+    }
+
+    /// Move `from` to `to`. Equivalent to [`Self::copy`] followed by
+    /// removing the source, but emits a single commit covering both
+    /// paths so a real VCS sees the rename as one operation.
+    pub fn rename(&mut self, from: &RelPath, to: &RelPath, overwrite: bool) -> Result<(), C, S, V> {
+        // No-op rename: nothing to do, and the byte-copy-then-remove path
+        // below would otherwise unlink the only copy of the entry.
+        if from.as_str() == to.as_str() {
+            return Ok(());
+        }
+        let to_blob = self.transfer_blob(from, to, overwrite)?;
+        let from_blob = entry_to_blob(from);
+        self.storage
+            .remove(&from_blob)
+            .map_err(StoreError::Storage)?;
+        self.vcs
+            .commit(
+                &[from_blob, to_blob],
+                &format!("bypass: Rename {from} to {to}"),
+            )
+            .map_err(StoreError::Vcs)?;
+        Ok(())
+    }
+
+    /// Shared body of [`Self::copy`] and [`Self::rename`]: read the
+    /// source blob, optionally re-encrypt to the destination's
+    /// recipients, write the destination blob, and return the
+    /// destination blob path (for inclusion in the caller's commit).
+    fn transfer_blob(
+        &mut self,
+        from: &RelPath,
+        to: &RelPath,
+        overwrite: bool,
+    ) -> Result<RelPath, C, S, V> {
+        let from_blob = entry_to_blob(from);
+        let to_blob = entry_to_blob(to);
+        if !overwrite && self.storage.exists(&to_blob).map_err(StoreError::Storage)? {
+            return Err(StoreError::AlreadyExists(to.as_str().to_owned()));
+        }
+        let ciphertext = self
+            .storage
+            .read(&from_blob)
+            .map_err(StoreError::Storage)?
+            .ok_or_else(|| StoreError::NotFound(from.as_str().to_owned()))?;
+        let src_recipients =
+            gpg_id::resolve_recipients(&self.storage, from).map_err(StoreError::from_gpg_id)?;
+        let dst_recipients =
+            gpg_id::resolve_recipients(&self.storage, to).map_err(StoreError::from_gpg_id)?;
+        let new_ciphertext = if recipients_equal(&src_recipients, &dst_recipients) {
+            ciphertext
+        } else {
+            let plain = self
+                .crypto
+                .decrypt(&ciphertext)
+                .map_err(StoreError::Crypto)?;
+            self.crypto
+                .encrypt(plain.as_slice(), &dst_recipients)
+                .map_err(StoreError::Crypto)?
+        };
+        self.storage
+            .write(&to_blob, &new_ciphertext)
+            .map_err(StoreError::Storage)?;
+        Ok(to_blob)
+    }
+
     /// Delete every entry under `prefix`. Returns the list of entries
     /// that were removed. If `prefix` contains no entries, returns
     /// `NotFound` so the CLI does not silently succeed on a typo.
@@ -231,6 +308,20 @@ pub(crate) fn entry_to_blob(entry: &RelPath) -> RelPath {
 pub(crate) fn blob_to_entry(blob: &RelPath) -> Option<RelPath> {
     let stem = blob.as_str().strip_suffix(".gpg")?;
     RelPath::new(stem).ok()
+}
+
+/// Compare two recipient lists as *sets*: order doesn't matter, duplicates
+/// (unlikely in practice) collapse. Used to decide whether `copy` / `rename`
+/// can byte-copy or must decrypt+re-encrypt.
+fn recipients_equal(a: &[KeyId], b: &[KeyId]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut a: Vec<&str> = a.iter().map(KeyId::as_str).collect();
+    let mut b: Vec<&str> = b.iter().map(KeyId::as_str).collect();
+    a.sort_unstable();
+    b.sort_unstable();
+    a == b
 }
 
 fn gpg_id_path() -> RelPath {
@@ -285,28 +376,41 @@ mod tests {
         }
     }
 
-    // ----- XorCrypto: reversible "encryption" so we can roundtrip in
-    //       tests without spawning gpg. recipients are recorded for
-    //       inspection. ----------------------------------------------------
+    // ----- TaggedCrypto: reversible "encryption" so we can roundtrip in
+    //       tests without spawning gpg. Records the recipient set in the
+    //       ciphertext header so tests can observe whether copy/rename
+    //       byte-copied or re-encrypted. -----------------------------------
 
-    struct XorCrypto;
+    struct TaggedCrypto;
 
     #[derive(Debug, thiserror::Error)]
-    #[error("xor crypto error")]
-    struct XorError;
+    #[error("tagged crypto error")]
+    struct TaggedError;
 
-    impl Crypto for XorCrypto {
-        type Error = XorError;
+    impl Crypto for TaggedCrypto {
+        type Error = TaggedError;
         fn encrypt(
             &self,
             plaintext: &[u8],
-            _recipients: &[KeyId],
+            recipients: &[KeyId],
         ) -> std::result::Result<Vec<u8>, Self::Error> {
-            Ok(plaintext.iter().map(|b| b ^ 0xAA).collect())
+            let header = recipients
+                .iter()
+                .map(KeyId::as_str)
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut out: Vec<u8> = header.into_bytes();
+            out.push(b'|');
+            out.extend(plaintext.iter().map(|b| b ^ 0xAA));
+            Ok(out)
         }
         fn decrypt(&self, ciphertext: &[u8]) -> std::result::Result<SecretBytes, Self::Error> {
+            let pos = ciphertext
+                .iter()
+                .position(|&b| b == b'|')
+                .ok_or(TaggedError)?;
             Ok(SecretBytes::new(
-                ciphertext.iter().map(|b| b ^ 0xAA).collect(),
+                ciphertext[pos + 1..].iter().map(|b| b ^ 0xAA).collect(),
             ))
         }
     }
@@ -315,8 +419,8 @@ mod tests {
         RelPath::new(s).unwrap()
     }
 
-    fn fresh_store() -> Store<XorCrypto, MemStorage, NoVcs> {
-        Store::new(XorCrypto, MemStorage::default(), NoVcs)
+    fn fresh_store() -> Store<TaggedCrypto, MemStorage, NoVcs> {
+        Store::new(TaggedCrypto, MemStorage::default(), NoVcs)
     }
 
     #[test]
@@ -391,7 +495,7 @@ mod tests {
         assert!(matches!(err, StoreError::NotInitialized));
     }
 
-    fn populated_store() -> Store<XorCrypto, MemStorage, NoVcs> {
+    fn populated_store() -> Store<TaggedCrypto, MemStorage, NoVcs> {
         let mut store = fresh_store();
         store.init(&[KeyId::new("ALICE")]).unwrap();
         for path in ["a", "b/c", "b/d", "email/work", "email/personal"] {
@@ -471,6 +575,107 @@ mod tests {
         let mut store = populated_store();
         let err = store.remove_recursive(&rp("nothing")).unwrap_err();
         assert!(matches!(err, StoreError::NotFound(s) if s == "nothing"));
+    }
+
+    // ----- copy / rename --------------------------------------------------
+
+    fn store_with_overrides() -> Store<TaggedCrypto, MemStorage, NoVcs> {
+        // Two subtrees with distinct .gpg-id files plus a root default,
+        // so we can test both the byte-copy and re-encrypt code paths.
+        let mut store = Store::new(TaggedCrypto, MemStorage::default(), NoVcs);
+        store.init(&[KeyId::new("ROOT")]).unwrap();
+        // Subtree A keeps ROOT; subtree B overrides to a different key.
+        store
+            .storage
+            .files
+            .insert("b/.gpg-id".to_owned(), b"BBB\n".to_vec());
+        store
+    }
+
+    fn ciphertext_of(store: &Store<TaggedCrypto, MemStorage, NoVcs>, entry: &str) -> Vec<u8> {
+        store
+            .storage
+            .files
+            .get(&format!("{entry}.gpg"))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn copy_within_same_recipients_byte_copies_ciphertext() {
+        let mut store = store_with_overrides();
+        store.insert(&rp("a/one"), b"plain", false).unwrap();
+        store.copy(&rp("a/one"), &rp("a/two"), false).unwrap();
+        let src = ciphertext_of(&store, "a/one");
+        let dst = ciphertext_of(&store, "a/two");
+        assert_eq!(src, dst, "same-recipient copy must byte-copy");
+        // Both should still decrypt to the original plaintext.
+        assert_eq!(store.show(&rp("a/two")).unwrap().as_slice(), b"plain");
+    }
+
+    #[test]
+    fn copy_across_recipients_re_encrypts_to_new_set() {
+        let mut store = store_with_overrides();
+        store.insert(&rp("a/one"), b"plain", false).unwrap();
+        store.copy(&rp("a/one"), &rp("b/two"), false).unwrap();
+        let src = ciphertext_of(&store, "a/one");
+        let dst = ciphertext_of(&store, "b/two");
+        assert_ne!(src, dst, "differing recipients must re-encrypt");
+        // Headers reveal the recipient sets used by each encrypt call.
+        assert!(src.starts_with(b"ROOT|"), "source header was {src:?}");
+        assert!(dst.starts_with(b"BBB|"), "dest header was {dst:?}");
+        // The plaintext survives the re-encrypt roundtrip.
+        assert_eq!(store.show(&rp("b/two")).unwrap().as_slice(), b"plain");
+    }
+
+    #[test]
+    fn copy_to_existing_destination_without_overwrite_is_rejected() {
+        let mut store = store_with_overrides();
+        store.insert(&rp("a/one"), b"v1", false).unwrap();
+        store.insert(&rp("a/two"), b"v2", false).unwrap();
+        let err = store.copy(&rp("a/one"), &rp("a/two"), false).unwrap_err();
+        assert!(matches!(err, StoreError::AlreadyExists(_)));
+        // Destination must be left intact.
+        assert_eq!(store.show(&rp("a/two")).unwrap().as_slice(), b"v2");
+    }
+
+    #[test]
+    fn copy_from_missing_source_returns_not_found() {
+        let mut store = store_with_overrides();
+        let err = store.copy(&rp("ghost"), &rp("a/x"), false).unwrap_err();
+        assert!(matches!(err, StoreError::NotFound(s) if s == "ghost"));
+    }
+
+    #[test]
+    fn rename_moves_and_removes_source() {
+        let mut store = store_with_overrides();
+        store.insert(&rp("a/one"), b"plain", false).unwrap();
+        store.rename(&rp("a/one"), &rp("a/two"), false).unwrap();
+        // Source gone, destination present with original plaintext.
+        assert!(matches!(
+            store.show(&rp("a/one")).unwrap_err(),
+            StoreError::NotFound(_)
+        ));
+        assert_eq!(store.show(&rp("a/two")).unwrap().as_slice(), b"plain");
+    }
+
+    #[test]
+    fn rename_across_recipients_re_encrypts() {
+        let mut store = store_with_overrides();
+        store.insert(&rp("a/one"), b"plain", false).unwrap();
+        store.rename(&rp("a/one"), &rp("b/two"), false).unwrap();
+        let dst = ciphertext_of(&store, "b/two");
+        assert!(dst.starts_with(b"BBB|"));
+        assert!(!store.storage.files.contains_key("a/one.gpg"));
+    }
+
+    #[test]
+    fn rename_to_self_is_noop_and_preserves_entry() {
+        let mut store = store_with_overrides();
+        store.insert(&rp("a/one"), b"plain", false).unwrap();
+        store.rename(&rp("a/one"), &rp("a/one"), false).unwrap();
+        // Entry must still be present and intact.
+        assert_eq!(store.show(&rp("a/one")).unwrap().as_slice(), b"plain");
     }
 
     #[test]
