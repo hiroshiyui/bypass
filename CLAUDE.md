@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **`doc/ROADMAP.md` is the source of truth** for design decisions, planned crate layout, and phased work. Read it before making structural choices. Update its checkboxes as work lands.
 
+**`doc/adr/`** holds the project's [Architecture Decision Records](doc/adr/README.md) — the durable rationale behind each load-bearing design decision. Read the relevant ADRs before changing anything they cover; if a change reverses or extends a recorded decision, write a new ADR rather than editing the old one.
+
 ## Workspace layout
 
 ```
