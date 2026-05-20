@@ -26,6 +26,13 @@ These come from `doc/ROADMAP.md` and should not be revisited without the user:
 - **Versioning:** `git2` crate (not subprocess `git`), in `bypass-cli` only.
 - **Sync:** git remotes first; LAN P2P is a stretch goal in Phase 5.2, not Phase 1.
 - **`bypass-core` stays portable.** It must not depend on `git2`, `arboard`, or any subprocess crate. Anything platform-specific belongs in a frontend crate.
+- **License:** GPL-3.0-or-later. Every new source file (`*.rs`, build scripts, future shell/Kotlin/TypeScript sources) must begin with an SPDX header:
+
+  ```rust
+  // SPDX-License-Identifier: GPL-3.0-or-later
+  ```
+
+  Use the comment syntax appropriate to the file type (`//`, `#`, `<!--`). Do not omit it on new files; do not add it to vendored third-party code.
 
 ## Commands
 

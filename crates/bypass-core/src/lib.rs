@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Platform-agnostic core for the `bypass` password manager.
 //!
 //! This crate defines the business logic and platform-abstraction traits:

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Crypto abstraction. Implemented per platform: gpg subprocess on the CLI,
 //! OpenKeychain (via callback interface) on Android, native-messaging host
 //! relay in the browser extension. Core never speaks OpenPGP itself.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Optional version-control abstraction. Linux CLI backs this with `git2`;
 //! browser/Android may pass `None` and rely on external sync.
 
