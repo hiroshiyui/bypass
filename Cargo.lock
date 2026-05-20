@@ -5,3 +5,10 @@ version = 4
 [[package]]
 name = "bypass"
 version = "0.1.0"
+dependencies = [
+ "bypass-core",
+]
+
+[[package]]
+name = "bypass-core"
+version = "0.1.0"

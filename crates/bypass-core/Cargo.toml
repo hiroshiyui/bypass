@@ -1,0 +1,10 @@
+[package]
+name = "bypass-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Platform-agnostic core for the `bypass` password manager. No filesystem, no subprocesses, no clipboard — only business logic over the Crypto, Storage, and VersionControl traits."
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
