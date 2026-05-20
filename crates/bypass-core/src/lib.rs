@@ -10,6 +10,7 @@
 
 pub mod crypto;
 pub mod entry;
+pub mod error;
 pub mod generate;
 pub mod gpg_id;
 pub mod otp;

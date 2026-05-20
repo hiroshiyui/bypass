@@ -62,11 +62,11 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 ## Phase 1 — Foundations *(business logic in `bypass-core`, I/O in `bypass-cli`)*
 
 ### Milestone 1.1: Project skeleton — `bypass-cli`
-- [ ] Add core dependencies to both crate manifests
-- [ ] Set up `cli.rs` with clap derive command enum
-- [ ] Wire `main.rs` to dispatch subcommands
-- [ ] Add `anyhow`/`thiserror` error scaffolding
-- [ ] Confirm `.gitignore` covers `target/` and any test fixtures
+- [x] Add core dependencies to both crate manifests
+- [x] Set up `cli.rs` with clap derive command enum
+- [x] Wire `main.rs` to dispatch subcommands
+- [x] Add `anyhow`/`thiserror` error scaffolding
+- [x] Confirm `.gitignore` covers `target/` and any test fixtures
 
 ### Milestone 1.2: GPG crypto path — `crypto_gpg` in `bypass-cli` against `Crypto` in `bypass-core`
 - [ ] `crypto_gpg.rs`: `encrypt(plaintext, recipients) -> Vec<u8>` via `gpg` subprocess
