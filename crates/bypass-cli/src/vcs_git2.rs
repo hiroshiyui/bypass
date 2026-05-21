@@ -57,6 +57,19 @@ impl Git2Vcs {
         Self { root }
     }
 
+    /// Returns `Some(name)` when the repository is mid-merge,
+    /// mid-rebase, mid-cherry-pick, etc; `None` when the tree is in
+    /// the normal clean state. Exposed so dispatch code (e.g.
+    /// `bypass sync`) can pre-flight without first attempting a
+    /// commit.
+    pub fn unfinished_state_name(&self) -> Result<Option<&'static str>, Git2Error> {
+        if !self.root.join(".git").exists() {
+            return Ok(None);
+        }
+        let repo = self.open()?;
+        Ok(unfinished_state(&repo))
+    }
+
     fn open(&self) -> Result<git2::Repository, Git2Error> {
         Ok(git2::Repository::open(&self.root)?)
     }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod audit;
 mod cli;
 mod clipboard;
 mod crypto_gpg;
@@ -234,6 +235,8 @@ fn dispatch() -> Result<u8> {
             Ok(0)
         }
         Command::Ext { name, args } => extensions::dispatch(&name, &args),
+        Command::Sync { force } => sync(force),
+        Command::Audit => audit_cmd(),
         Command::Git { args } => {
             let root = StorageFs::resolve_default_root().context("resolve store root")?;
             let status = std::process::Command::new("git")
@@ -313,4 +316,75 @@ where
     VE: std::error::Error + Send + Sync + 'static,
 {
     anyhow::Error::new(e)
+}
+
+fn sync(force: bool) -> Result<u8> {
+    let root = StorageFs::resolve_default_root().context("resolve store root")?;
+    let vcs = Git2Vcs::new(root.clone());
+    if let Some(state) = vcs.unfinished_state_name()? {
+        bail!(
+            "git repository is in an unfinished {state} state; \
+             finish or abort it (e.g. `bypass git {state} --abort`) \
+             before running this command"
+        );
+    }
+    let pull = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["pull", "--rebase"])
+        .status()
+        .context("spawn `git pull --rebase`")?;
+    if !pull.success() {
+        bail!(
+            "`git pull --rebase` failed (exit {}); see `bypass git status` \
+             and resolve before re-running `bypass sync`",
+            pull.code().unwrap_or(-1)
+        );
+    }
+    if !force {
+        let issues = audit::audit_for_push(&root)?;
+        if !issues.is_empty() {
+            for i in &issues {
+                eprintln!(
+                    "bypass: {}: {} ({})",
+                    i.path.display(),
+                    i.kind.describe(),
+                    i.detail
+                );
+            }
+            bail!(
+                "refusing to push {} suspicious file(s); run `bypass audit` to \
+                 review, fix locally, or re-run with `--force` to override",
+                issues.len()
+            );
+        }
+    }
+    let push = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .arg("push")
+        .status()
+        .context("spawn `git push`")?;
+    if !push.success() {
+        bail!(
+            "`git push` failed (exit {}); check your remote and credentials",
+            push.code().unwrap_or(-1)
+        );
+    }
+    eprintln!("synced.");
+    Ok(0)
+}
+
+fn audit_cmd() -> Result<u8> {
+    let root = StorageFs::resolve_default_root().context("resolve store root")?;
+    let issues = audit::audit_for_push(&root)?;
+    if issues.is_empty() {
+        eprintln!("audit: store looks clean");
+        Ok(0)
+    } else {
+        for i in &issues {
+            println!("{}: {} ({})", i.path.display(), i.kind.describe(), i.detail);
+        }
+        Ok(1)
+    }
 }

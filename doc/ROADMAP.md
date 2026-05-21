@@ -138,9 +138,10 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 ## Phase 5 — Sync
 
 ### Milestone 5.1: Git-based sync (default)
-- [ ] Document workflow: `bypass git remote add … && bypass git push`
-- [ ] `bypass sync` convenience command (pull + push)
-- [ ] Conflict resolution guidance
+- [x] Document workflow: `bypass git remote add … && bypass git push`
+- [x] `bypass sync` convenience command (pull + push)
+- [x] Conflict resolution guidance
+- [x] `bypass audit` + sync-time leak check refusing pushes that contain non-ciphertext files (see [ADR-0009](adr/0009-leak-check-before-push.md))
 
 ### Milestone 5.2: LAN P2P sync (stretch)
 - [ ] Evaluate `libp2p` (mDNS + noise + gossipsub) vs custom protocol

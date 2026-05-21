@@ -553,6 +553,230 @@ fn ext_without_exec_bit_is_not_found() {
         .stderr(predicate::str::contains("not found"));
 }
 
+/// Initialise a bare git repo to act as the remote for sync tests.
+#[cfg(unix)]
+fn bare_remote() -> tempfile::TempDir {
+    let td = tempfile::TempDir::new().unwrap();
+    let status = std::process::Command::new("git")
+        .arg("init")
+        .arg("--bare")
+        .arg(td.path())
+        .status()
+        .expect("git init --bare");
+    assert!(status.success(), "git init --bare failed");
+    td
+}
+
+/// Helper: short-hand for the current local branch name (whatever
+/// `init.defaultBranch` is on the test host — usually `main`).
+#[cfg(unix)]
+fn current_branch(env: &common::TestEnv) -> String {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(env.store_dir.path())
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .expect("git rev-parse");
+    assert!(out.status.success(), "git rev-parse HEAD failed");
+    String::from_utf8(out.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+#[cfg(unix)]
+fn sync_pushes_and_pulls_against_a_local_bare_remote() {
+    let env = common::TestEnv::new();
+    let remote = bare_remote();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "email/work"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+
+    let branch = current_branch(&env);
+    bypass(&env)
+        .args(["git", "remote", "add", "origin"])
+        .arg(remote.path())
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["git", "push", "-u", "origin", &branch])
+        .assert()
+        .success();
+
+    bypass(&env)
+        .args(["insert", "email/personal"])
+        .write_stdin("p3rs0nal")
+        .assert()
+        .success();
+
+    bypass(&env).arg("sync").assert().success();
+
+    // The bare repo's ref should now match the local HEAD.
+    let local_head = String::from_utf8(
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(env.store_dir.path())
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let remote_head = String::from_utf8(
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(remote.path())
+            .args(["rev-parse", &branch])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert_eq!(local_head.trim(), remote_head.trim());
+
+    // Second sync: no-op (nothing to push, nothing to pull).
+    bypass(&env).arg("sync").assert().success();
+}
+
+#[test]
+#[cfg(unix)]
+fn sync_refuses_when_plaintext_is_staged() {
+    let env = common::TestEnv::new();
+    let remote = bare_remote();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "email/work"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+    let branch = current_branch(&env);
+    bypass(&env)
+        .args(["git", "remote", "add", "origin"])
+        .arg(remote.path())
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["git", "push", "-u", "origin", &branch])
+        .assert()
+        .success();
+
+    // Stash plaintext into the store and commit it.
+    std::fs::write(env.store_dir.path().join("notes.txt"), "real secret").unwrap();
+    bypass(&env)
+        .args(["git", "add", "notes.txt"])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["git", "commit", "-m", "oops"])
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.invalid")
+        .assert()
+        .success();
+
+    let before = String::from_utf8(
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(remote.path())
+            .args(["rev-parse", &branch])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+
+    bypass(&env)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("notes.txt"))
+        .stderr(predicate::str::contains("suspicious"));
+
+    let after = String::from_utf8(
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(remote.path())
+            .args(["rev-parse", &branch])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert_eq!(
+        before, after,
+        "remote ref must not advance when sync refuses"
+    );
+
+    // --force overrides and publishes.
+    bypass(&env).args(["sync", "--force"]).assert().success();
+    let after_force = String::from_utf8(
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(remote.path())
+            .args(["rev-parse", &branch])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert_ne!(before, after_force, "--force must advance the remote ref");
+}
+
+#[test]
+#[cfg(unix)]
+fn audit_lists_problem_files() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "email/work"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+
+    // Clean store before any plaintext is added.
+    bypass(&env)
+        .arg("audit")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("clean"));
+
+    // Add plaintext and commit.
+    std::fs::write(env.store_dir.path().join("notes.txt"), "real secret").unwrap();
+    bypass(&env)
+        .args(["git", "add", "notes.txt"])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["git", "commit", "-m", "oops"])
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.invalid")
+        .assert()
+        .success();
+
+    bypass(&env)
+        .arg("audit")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("notes.txt"))
+        .stdout(predicate::str::contains("unknown filename"));
+}
+
 #[test]
 fn edit_with_unchanged_buffer_reports_no_changes() {
     let env = common::TestEnv::new();

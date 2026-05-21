@@ -81,6 +81,9 @@ pub fn run() -> i32 {
 
     run_check_editor(&mut checks);
     run_check_git(&mut checks);
+    if let Some(r) = &root {
+        run_check_leak_audit(&mut checks, r);
+    }
 
     print_report(&checks);
 
@@ -271,8 +274,46 @@ fn run_check_git(checks: &mut Vec<Check>) {
         }
         _ => checks.push(Check::warn(
             "git",
-            "git binary not found; sync will be unavailable in Phase 2",
+            "git binary not found; `bypass sync` will be unavailable",
         )),
+    }
+}
+
+fn run_check_leak_audit(checks: &mut Vec<Check>, root: &Path) {
+    if !root.join(".git").exists() {
+        // Audit only makes sense once init has run.
+        return;
+    }
+    match crate::audit::audit_for_push(root) {
+        Ok(issues) if issues.is_empty() => {
+            checks.push(Check::ok(
+                "audit",
+                "no plaintext or unknown files in the pending push",
+            ));
+        }
+        Ok(issues) => {
+            let preview = issues
+                .iter()
+                .take(3)
+                .map(|i| i.path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let more = if issues.len() > 3 {
+                format!(", … (+{} more)", issues.len() - 3)
+            } else {
+                String::new()
+            };
+            checks.push(Check::fail(
+                "audit",
+                format!(
+                    "{} suspicious file(s): {preview}{more}; run `bypass audit`",
+                    issues.len()
+                ),
+            ));
+        }
+        Err(e) => {
+            checks.push(Check::warn("audit", format!("could not run audit: {e}")));
+        }
     }
 }
 

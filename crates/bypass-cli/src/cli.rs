@@ -133,6 +133,23 @@ pub enum Command {
         path: Option<String>,
     },
 
+    /// Sync the store with its git remote: `git pull --rebase` then
+    /// `git push`. Before pushing, runs the same leak check as
+    /// `bypass audit` over the commits about to be published.
+    Sync {
+        /// Skip the leak-check audit. Use only when you know exactly
+        /// what's about to be pushed.
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Inspect the local store for files that don't look like OpenPGP
+    /// ciphertext or recognised metadata. Scans the unpushed commits
+    /// (`@{upstream}..HEAD`), falling back to the full tracked set on
+    /// stores without an upstream. Exits 0 when clean, 1 when issues
+    /// are found.
+    Audit,
+
     /// Compute the current TOTP code for an entry containing an
     /// `otpauth://` URI.
     Otp {
