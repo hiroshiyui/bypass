@@ -31,7 +31,7 @@ load-bearing design decisions live in
 
 | Frontend | Status |
 |---|---|
-| Linux CLI (`bypass`) | ✅ Phases 1 & 2.1 shipped (CRUD + git versioning) |
+| Linux CLI (`bypass`) | ✅ Phases 1, 2 & 3 shipped (CRUD + git versioning + generation + clipboard) |
 | Firefox & Chrome extension | 🗓 Planned (Phase 7) |
 | Android app | 🗓 Planned (Phase 8) |
 
@@ -41,11 +41,33 @@ You need a Rust toolchain (edition 2024) and the system `gpg` binary
 on your `$PATH`. `bypass doctor` will check both for you, plus your
 store directory and recipients.
 
+### Install (recommended)
+
 ```sh
 git clone https://github.com/hiroshiyui/bypass.git
 cd bypass
+cargo install --path crates/bypass-cli
+bypass doctor
+```
+
+`cargo install` drops the release-mode `bypass` binary into
+`~/.cargo/bin/`, which should already be on your `$PATH` if you
+installed Rust via `rustup`. To upgrade later, `git pull` and re-run
+the same `cargo install --path crates/bypass-cli` — it overwrites in
+place. `cargo uninstall bypass` removes it. (Note: this is a workspace,
+so `cargo install --path .` from the root won't work — point it at the
+`bypass-cli` crate explicitly.)
+
+### Build from source without installing
+
+If you'd rather run the binary in place — handy when hacking on
+`bypass` itself — build the workspace and invoke it via cargo:
+
+```sh
 cargo build --release
 ./target/release/bypass doctor
+# or
+cargo run -p bypass --release -- doctor
 ```
 
 ## Usage
@@ -76,8 +98,21 @@ bypass mv  archive/github  archive/github-old
 # /dev/shm when available so it never hits permanent storage
 bypass edit github.com/you
 
+# Generate a strong random password (default 25 chars, alphanumeric + symbols)
+bypass generate github.com/you 32
+
+# Generate and copy to the clipboard, auto-clearing after ~45 s
+bypass generate -c github.com/you
+
+# Copy an existing entry to the clipboard instead of printing it
+bypass show -c github.com/you
+
 # Securely delete (shred-style overwrite before unlink — see ADR-0008)
 bypass rm github.com/you
+
+# Inspect history
+bypass log github.com/you      # commits touching this entry
+bypass log                     # full store history
 ```
 
 Sync is just git — every store is a real git repository, and the
@@ -89,8 +124,9 @@ bypass git push -u origin main
 bypass git log --oneline
 ```
 
-Still to come: `bypass generate`, `-c` clipboard mode, structured
-entries, TOTP — see [`doc/ROADMAP.md`](doc/ROADMAP.md).
+Still to come: structured-field access (`bypass show <path> <field>`),
+TOTP (`bypass otp`), extensions, and the browser / Android frontends —
+see [`doc/ROADMAP.md`](doc/ROADMAP.md).
 
 ## Crypto, briefly
 
