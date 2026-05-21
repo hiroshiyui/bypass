@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod cli;
+mod clipboard;
 mod crypto_gpg;
 mod doctor;
 mod edit;
@@ -13,9 +14,12 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result, anyhow, bail};
 use bypass_core::crypto::KeyId;
+use bypass_core::generate::{self, DEFAULT_LENGTH};
 use bypass_core::path::RelPath;
 use bypass_core::store::Store;
 use clap::Parser;
+
+use crate::clipboard::DEFAULT_CLEAR_SECS;
 
 use crate::cli::{Cli, Command};
 use crate::crypto_gpg::GpgCli;
@@ -65,17 +69,29 @@ fn dispatch() -> Result<u8> {
                 .map_err(map_store_err)?;
             Ok(0)
         }
-        Command::Show { path } => {
+        Command::Show { path, clip } => {
             let entry = parse_entry(&path)?;
             let store = open_store()?;
             let plaintext = store.show(&entry).map_err(map_store_err)?;
-            io::stdout()
-                .write_all(plaintext.as_slice())
-                .context("write stdout")?;
-            // Pass appends a trailing newline only if the entry didn't have one;
-            // we follow the same rule.
-            if plaintext.as_slice().last() != Some(&b'\n') {
-                let _ = writeln!(io::stdout());
+            if clip {
+                let body = plaintext.as_slice();
+                // pass's `-c` copies only the first line so login fields
+                // below it (line 2+) aren't pasted alongside the password.
+                let first_line = body
+                    .iter()
+                    .position(|&b| b == b'\n')
+                    .map(|i| &body[..i])
+                    .unwrap_or(body);
+                clipboard::copy_and_auto_clear(first_line, DEFAULT_CLEAR_SECS)?;
+            } else {
+                io::stdout()
+                    .write_all(plaintext.as_slice())
+                    .context("write stdout")?;
+                // Pass appends a trailing newline only if the entry didn't
+                // have one; we follow the same rule.
+                if plaintext.as_slice().last() != Some(&b'\n') {
+                    let _ = writeln!(io::stdout());
+                }
             }
             Ok(0)
         }
@@ -134,6 +150,45 @@ fn dispatch() -> Result<u8> {
             edit::run(&mut store, &entry)?;
             Ok(0)
         }
+        Command::Generate {
+            path,
+            length,
+            no_symbols,
+            in_place,
+            force,
+            clip,
+        } => {
+            let entry = parse_entry(&path)?;
+            let length = length.unwrap_or(DEFAULT_LENGTH);
+            let password = generate::generate(length, !no_symbols);
+            let mut store = open_store()?;
+            if in_place {
+                // Replace only the first line; keep the rest of the body.
+                let existing = match store.show(&entry) {
+                    Ok(b) => b.as_slice().to_vec(),
+                    Err(e) => return Err(map_store_err(e)),
+                };
+                let tail: &[u8] = match existing.iter().position(|&b| b == b'\n') {
+                    Some(i) => &existing[i..],
+                    None => b"",
+                };
+                let mut new_body = password.clone().into_bytes();
+                new_body.extend_from_slice(tail);
+                store
+                    .insert(&entry, &new_body, /*overwrite=*/ true)
+                    .map_err(map_store_err)?;
+            } else {
+                store
+                    .insert(&entry, password.as_bytes(), force)
+                    .map_err(map_store_err)?;
+            }
+            if clip {
+                clipboard::copy_and_auto_clear(password.as_bytes(), DEFAULT_CLEAR_SECS)?;
+            } else {
+                println!("{password}");
+            }
+            Ok(0)
+        }
         Command::Cp { from, to, force } => {
             let from_entry = parse_entry(&from)?;
             let to_entry = parse_entry(&to)?;
@@ -142,6 +197,10 @@ fn dispatch() -> Result<u8> {
                 .copy(&from_entry, &to_entry, force)
                 .map_err(map_store_err)?;
             eprintln!("copied {from_entry} to {to_entry}");
+            Ok(0)
+        }
+        Command::ClipboardSet { seconds } => {
+            clipboard::run_daemon(seconds)?;
             Ok(0)
         }
         Command::Git { args } => {

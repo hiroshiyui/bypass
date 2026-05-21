@@ -301,6 +301,94 @@ fn mutations_refuse_when_repo_is_mid_merge() {
 }
 
 #[test]
+fn generate_stores_and_prints_password_of_requested_length() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+
+    let out = bypass(&env)
+        .args(["generate", "wifi", "32", "--no-symbols"])
+        .assert()
+        .success();
+    let printed = String::from_utf8_lossy(&out.get_output().stdout)
+        .trim()
+        .to_owned();
+    assert_eq!(printed.chars().count(), 32);
+    assert!(
+        printed.chars().all(|c| c.is_ascii_alphanumeric()),
+        "--no-symbols password contained non-alphanumeric: {printed}"
+    );
+
+    // The same password must roundtrip through `show`.
+    bypass(&env)
+        .args(["show", "wifi"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with(printed.as_str()));
+}
+
+#[test]
+fn generate_without_force_refuses_to_overwrite() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "wifi"])
+        .write_stdin("preexisting")
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["generate", "wifi"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+    bypass(&env)
+        .args(["show", "wifi"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("preexisting"));
+}
+
+#[test]
+fn generate_in_place_preserves_trailing_lines() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    // Multi-line entry: first line is the password, rest is metadata in the
+    // pass `key: value` style.
+    bypass(&env)
+        .args(["insert", "--multiline", "service"])
+        .write_stdin("old-password\nlogin: alice\nurl: https://example.com\n")
+        .assert()
+        .success();
+
+    let out = bypass(&env)
+        .args(["generate", "service", "16", "--in-place"])
+        .assert()
+        .success();
+    let new_password = String::from_utf8_lossy(&out.get_output().stdout)
+        .trim()
+        .to_owned();
+    assert_eq!(new_password.chars().count(), 16);
+
+    let shown = bypass(&env).args(["show", "service"]).assert().success();
+    let stdout = String::from_utf8_lossy(&shown.get_output().stdout).into_owned();
+    let mut lines = stdout.lines();
+    assert_eq!(lines.next().unwrap(), new_password);
+    assert_eq!(lines.next().unwrap(), "login: alice");
+    assert_eq!(lines.next().unwrap(), "url: https://example.com");
+}
+
+#[test]
 fn edit_with_unchanged_buffer_reports_no_changes() {
     let env = common::TestEnv::new();
     bypass(&env)

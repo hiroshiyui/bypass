@@ -104,15 +104,15 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 ## Phase 3 — Generation & clipboard
 
 ### Milestone 3.1: Password generation — `bypass-core`
-- [ ] `generate.rs`: cryptographically-secure password generation
-- [ ] Configurable length, symbol set, no-symbols flag
-- [ ] `bypass generate <path> [length]` — generate + store
-- [ ] `--in-place` to replace only the first line of an existing entry
+- [x] `generate.rs`: cryptographically-secure password generation
+- [x] Configurable length, symbol set, no-symbols flag
+- [x] `bypass generate <path> [length]` — generate + store
+- [x] `--in-place` to replace only the first line of an existing entry
 
 ### Milestone 3.2: Clipboard — `bypass-cli`
-- [ ] `clipboard.rs`: copy password via `arboard`
-- [ ] Auto-clear after N seconds (default 45), preserve prior clipboard contents
-- [ ] `bypass show -c <path>` and `bypass generate -c <path>`
+- [x] `clipboard.rs`: copy password via `arboard`
+- [x] Auto-clear after N seconds (default 45), preserve prior clipboard contents
+- [x] `bypass show -c <path>` and `bypass generate -c <path>`
 
 ---
 

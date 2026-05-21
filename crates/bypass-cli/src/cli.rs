@@ -42,6 +42,11 @@ pub enum Command {
     Show {
         /// Entry path.
         path: String,
+        /// Copy the first line to the system clipboard for ~45 seconds
+        /// instead of printing the entry. The previous clipboard
+        /// contents are restored when the timer elapses.
+        #[arg(short = 'c', long = "clip")]
+        clip: bool,
     },
 
     /// List entries as a tree.
@@ -69,6 +74,28 @@ pub enum Command {
     Edit {
         /// Entry path.
         path: String,
+    },
+
+    /// Generate a strong random password, store it, and print it.
+    Generate {
+        /// Entry path.
+        path: String,
+        /// Password length. Defaults to 25 (matches `pass`).
+        length: Option<usize>,
+        /// Use the alphanumeric alphabet only (no punctuation).
+        #[arg(short, long)]
+        no_symbols: bool,
+        /// Replace only the first line of an existing entry, keeping the
+        /// rest of the body intact. Implies overwrite.
+        #[arg(short = 'i', long)]
+        in_place: bool,
+        /// Overwrite an existing entry. Ignored when `--in-place` is set.
+        #[arg(short, long)]
+        force: bool,
+        /// Copy the generated password to the clipboard instead of
+        /// printing it. Auto-clears after ~45 seconds.
+        #[arg(short = 'c', long = "clip")]
+        clip: bool,
     },
 
     /// Copy an entry.
@@ -109,5 +136,15 @@ pub enum Command {
         /// Arguments to forward to `git`.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
+    },
+
+    /// Internal: clipboard auto-clear daemon. Spawned by `show -c` /
+    /// `generate -c` via re-exec. Reads the password to install from
+    /// stdin. Not meant for direct user invocation.
+    #[command(hide = true, name = "__clipboard-set")]
+    ClipboardSet {
+        /// Seconds to keep the password on the clipboard before
+        /// restoring whatever was there before.
+        seconds: u64,
     },
 }
