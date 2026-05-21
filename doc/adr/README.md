@@ -28,3 +28,5 @@ Process and conventions are defined in
 | 0007 | [`RelPath` newtype with traversal-safety invariants](0007-relpath-traversal-safety.md) | Accepted |
 | 0008 | [Secure-delete via overwrite in `StorageFs::remove`](0008-secure-delete-via-overwrite.md) | Accepted |
 | 0009 | [Refuse to push files that don't look like OpenPGP ciphertext](0009-leak-check-before-push.md) | Accepted |
+| 0010 | [Use libp2p (mDNS + Noise + request-response) for LAN P2P sync](0010-p2p-transport-libp2p.md) | Accepted |
+| 0011 | [Hybrid sync semantics: git pack on the wire, auto-rebase, manual fallback](0011-sync-semantics-hybrid.md) | Accepted |

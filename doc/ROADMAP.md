@@ -144,11 +144,11 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] `bypass audit` + sync-time leak check refusing pushes that contain non-ciphertext files (see [ADR-0009](adr/0009-leak-check-before-push.md))
 
 ### Milestone 5.2: LAN P2P sync (stretch)
-- [ ] Evaluate `libp2p` (mDNS + noise + gossipsub) vs custom protocol
-- [ ] Device pairing flow (QR / short code)
-- [ ] Encrypted-at-rest blobs only — sync layer never sees plaintext
-- [ ] Conflict resolution (per-entry last-write-wins with history retained in git)
-- [ ] Daemon mode + `bypass sync status`
+- [x] Design evaluation + transport / sync-semantics ADRs ([doc/sync-p2p-evaluation.md](sync-p2p-evaluation.md), [ADR-0010](adr/0010-p2p-transport-libp2p.md), [ADR-0011](adr/0011-sync-semantics-hybrid.md))
+- [ ] **5.2.a** Device pairing flow (PAKE-from-PIN, peer-ID pinning)
+- [ ] **5.2.b** Sync core: git pack over libp2p, hybrid auto-rebase policy, leak audit on receive
+- [ ] **5.2.c** Daemon mode + `bypass sync status`
+- [ ] **5.2.d** Two-peer integration tests + README rewrite
 
 ---
 
