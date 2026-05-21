@@ -5,6 +5,7 @@ mod clipboard;
 mod crypto_gpg;
 mod doctor;
 mod edit;
+mod extensions;
 mod storage_fs;
 mod tree;
 mod vcs_git2;
@@ -39,6 +40,20 @@ fn main() -> ExitCode {
 fn dispatch() -> Result<u8> {
     let args = Cli::parse();
     match args.command {
+        Command::Otp { path, clip } => {
+            let entry = parse_entry(&path)?;
+            let store = open_store()?;
+            let plaintext = store.show(&entry).map_err(map_store_err)?;
+            let text =
+                std::str::from_utf8(plaintext.as_slice()).context("entry is not valid UTF-8")?;
+            let code = bypass_core::otp::current_code(text).context("compute TOTP code")?;
+            if clip {
+                clipboard::copy_and_auto_clear(code.as_bytes(), DEFAULT_CLEAR_SECS)?;
+            } else {
+                println!("{code}");
+            }
+            Ok(0)
+        }
         Command::Doctor => Ok(doctor::run() as u8),
         Command::Log { path } => {
             let entry = path.as_deref().map(parse_entry).transpose()?;
@@ -69,27 +84,42 @@ fn dispatch() -> Result<u8> {
                 .map_err(map_store_err)?;
             Ok(0)
         }
-        Command::Show { path, clip } => {
+        Command::Show { path, field, clip } => {
             let entry = parse_entry(&path)?;
             let store = open_store()?;
             let plaintext = store.show(&entry).map_err(map_store_err)?;
+            // Output bytes depending on whether a field was requested.
+            let output: Vec<u8> = match field.as_deref() {
+                Some(name) => {
+                    let parsed = bypass_core::entry::Entry::parse(plaintext.as_slice())
+                        .context("parse entry body")?;
+                    let value = parsed
+                        .field(name)
+                        .ok_or_else(|| anyhow!("entry has no field {name:?}"))?;
+                    value.as_bytes().to_vec()
+                }
+                None => plaintext.as_slice().to_vec(),
+            };
             if clip {
-                let body = plaintext.as_slice();
-                // pass's `-c` copies only the first line so login fields
-                // below it (line 2+) aren't pasted alongside the password.
-                let first_line = body
-                    .iter()
-                    .position(|&b| b == b'\n')
-                    .map(|i| &body[..i])
-                    .unwrap_or(body);
-                clipboard::copy_and_auto_clear(first_line, DEFAULT_CLEAR_SECS)?;
+                // Whole-entry copy is meaningless: a multi-line entry would
+                // paste with key:value rows attached. So `-c` without a
+                // field copies just the first line (the password);
+                // with a field it copies the field value.
+                let to_copy: &[u8] = if field.is_some() {
+                    &output
+                } else {
+                    output
+                        .iter()
+                        .position(|&b| b == b'\n')
+                        .map(|i| &output[..i])
+                        .unwrap_or(&output)
+                };
+                clipboard::copy_and_auto_clear(to_copy, DEFAULT_CLEAR_SECS)?;
             } else {
-                io::stdout()
-                    .write_all(plaintext.as_slice())
-                    .context("write stdout")?;
-                // Pass appends a trailing newline only if the entry didn't
-                // have one; we follow the same rule.
-                if plaintext.as_slice().last() != Some(&b'\n') {
+                io::stdout().write_all(&output).context("write stdout")?;
+                // Append a trailing newline if the output didn't already
+                // end with one, matching pass.
+                if output.last() != Some(&b'\n') {
                     let _ = writeln!(io::stdout());
                 }
             }
@@ -203,6 +233,7 @@ fn dispatch() -> Result<u8> {
             clipboard::run_daemon(seconds)?;
             Ok(0)
         }
+        Command::Ext { name, args } => extensions::dispatch(&name, &args),
         Command::Git { args } => {
             let root = StorageFs::resolve_default_root().context("resolve store root")?;
             let status = std::process::Command::new("git")

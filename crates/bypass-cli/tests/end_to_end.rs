@@ -389,6 +389,171 @@ fn generate_in_place_preserves_trailing_lines() {
 }
 
 #[test]
+fn show_with_field_arg_prints_only_that_field() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "--multiline", "service"])
+        .write_stdin("hunter2\nlogin: alice\nurl: https://example.com\n")
+        .assert()
+        .success();
+
+    // No field → full entry.
+    bypass(&env)
+        .args(["show", "service"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("hunter2"))
+        .stdout(predicate::str::contains("login: alice"));
+
+    // With field → just the value.
+    bypass(&env)
+        .args(["show", "service", "login"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("alice"))
+        .stdout(predicate::str::contains("hunter2").not())
+        .stdout(predicate::str::contains("https://").not());
+
+    // Field lookup is case-insensitive.
+    bypass(&env)
+        .args(["show", "service", "URL"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("https://example.com"));
+
+    // Missing field is an error.
+    bypass(&env)
+        .args(["show", "service", "ghost"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no field"));
+}
+
+#[test]
+fn otp_prints_six_digit_code_from_otpauth_uri() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    // RFC 6238 test vector secret.
+    bypass(&env)
+        .args(["insert", "--multiline", "totp/example"])
+        .write_stdin(concat!(
+            "hunter2\n",
+            "login: alice\n",
+            "otpauth://totp/Example:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Example\n",
+        ))
+        .assert()
+        .success();
+
+    let out = bypass(&env)
+        .args(["otp", "totp/example"])
+        .assert()
+        .success();
+    let code = String::from_utf8_lossy(&out.get_output().stdout)
+        .trim()
+        .to_owned();
+    assert_eq!(code.len(), 6, "OTP output was {code:?}");
+    assert!(
+        code.chars().all(|c| c.is_ascii_digit()),
+        "OTP output is not all digits: {code}"
+    );
+}
+
+#[test]
+fn otp_without_otpauth_uri_fails_with_helpful_message() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "no-otp"])
+        .write_stdin("just a password")
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["otp", "no-otp"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("otpauth"));
+}
+
+#[test]
+#[cfg(unix)]
+fn ext_runs_an_extension_and_passes_env_vars() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+
+    // Place a tiny shell-script extension in a per-test directory and
+    // point PASSWORD_STORE_EXTENSIONS_DIR at it.
+    let ext_dir = tempfile::TempDir::new().unwrap();
+    let script_path = ext_dir.path().join("dump-env");
+    std::fs::write(
+        &script_path,
+        b"#!/bin/sh\nprintf 'STORE=%s\\nBIN=%s\\nARGS=%s\\n' \
+            \"$PASSWORD_STORE_DIR\" \"$PASSWORD_STORE_BIN\" \"$*\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let store_path = env.store_dir.path().to_path_buf();
+    let out = bypass(&env)
+        .env("PASSWORD_STORE_EXTENSIONS_DIR", ext_dir.path())
+        .args(["ext", "dump-env", "hello", "world"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).into_owned();
+    assert!(
+        stdout.contains(&format!("STORE={}", store_path.display())),
+        "expected STORE in output, got:\n{stdout}"
+    );
+    assert!(stdout.contains("BIN="), "expected BIN= line:\n{stdout}");
+    assert!(stdout.contains("ARGS=hello world"));
+}
+
+#[test]
+#[cfg(unix)]
+fn ext_without_exec_bit_is_not_found() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    let ext_dir = tempfile::TempDir::new().unwrap();
+    std::fs::write(ext_dir.path().join("not-exec"), b"#!/bin/sh\necho hi\n").unwrap();
+    // chmod 0644 — readable but not executable.
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(
+        ext_dir.path().join("not-exec"),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+
+    bypass(&env)
+        .env("PASSWORD_STORE_EXTENSIONS_DIR", ext_dir.path())
+        .args(["ext", "not-exec"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
+}
+
+#[test]
 fn edit_with_unchanged_buffer_reports_no_changes() {
     let env = common::TestEnv::new();
     bypass(&env)

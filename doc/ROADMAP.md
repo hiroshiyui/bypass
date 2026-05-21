@@ -119,19 +119,19 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 ## Phase 4 — Advanced entries
 
 ### Milestone 4.1: Structured entries — `bypass-core`
-- [ ] `entry.rs`: parse multi-line entries (first line = password, then `key: value`)
-- [ ] `bypass show <path> <field>` — print only one field
-- [ ] `-c` copy of a specific field
+- [x] `entry.rs`: parse multi-line entries (first line = password, then `key: value`)
+- [x] `bypass show <path> <field>` — print only one field
+- [x] `-c` copy of a specific field
 
 ### Milestone 4.2: TOTP — `bypass-core`
-- [ ] `otp.rs`: parse `otpauth://` URIs in entries
-- [ ] `bypass otp <path>` — print current TOTP code
-- [ ] `bypass otp -c <path>` — copy TOTP code with auto-clear
+- [x] `otp.rs`: parse `otpauth://` URIs in entries
+- [x] `bypass otp <path>` — print current TOTP code
+- [x] `bypass otp -c <path>` — copy TOTP code with auto-clear
 
 ### Milestone 4.3: Extensions — `bypass-cli`
-- [ ] `extensions.rs`: discover executables in `~/.password-store-extensions/`
-- [ ] Pass env vars (`PASSWORD_STORE_DIR`, etc.) to extensions
-- [ ] `bypass ext <name> [args]` dispatch
+- [x] `extensions.rs`: discover executables in `~/.password-store-extensions/`
+- [x] Pass env vars (`PASSWORD_STORE_DIR`, etc.) to extensions
+- [x] `bypass ext <name> [args]` dispatch
 
 ---
 

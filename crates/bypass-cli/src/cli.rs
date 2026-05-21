@@ -42,9 +42,15 @@ pub enum Command {
     Show {
         /// Entry path.
         path: String,
-        /// Copy the first line to the system clipboard for ~45 seconds
-        /// instead of printing the entry. The previous clipboard
-        /// contents are restored when the timer elapses.
+        /// Optional field name. When given, print (or copy with `-c`)
+        /// only the value of that field instead of the whole entry.
+        /// Field matching is case-insensitive.
+        field: Option<String>,
+        /// Copy the chosen output to the system clipboard for ~45
+        /// seconds instead of printing it. Without a field this copies
+        /// the first line (the password); with a field it copies the
+        /// field value. The previous clipboard contents are restored
+        /// when the timer elapses.
         #[arg(short = 'c', long = "clip")]
         clip: bool,
     },
@@ -127,6 +133,17 @@ pub enum Command {
         path: Option<String>,
     },
 
+    /// Compute the current TOTP code for an entry containing an
+    /// `otpauth://` URI.
+    Otp {
+        /// Entry path.
+        path: String,
+        /// Copy the code to the clipboard instead of printing it.
+        /// Auto-clears after ~45 seconds.
+        #[arg(short = 'c', long = "clip")]
+        clip: bool,
+    },
+
     /// Check the environment: gpg, keyring, store, recipients, $EDITOR, git.
     Doctor,
 
@@ -134,6 +151,17 @@ pub enum Command {
     /// Anything after `bypass git` is passed through verbatim.
     Git {
         /// Arguments to forward to `git`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Run a pass-style extension. Searches `<store>/.extensions/<name>`,
+    /// `$PASSWORD_STORE_EXTENSIONS_DIR/<name>`, and
+    /// `~/.password-store-extensions/<name>` in that order.
+    Ext {
+        /// Extension name.
+        name: String,
+        /// Arguments forwarded to the extension.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },

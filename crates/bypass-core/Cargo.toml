@@ -8,7 +8,7 @@ description = "Platform-agnostic core for the `bypass` password manager. No file
 
 [dependencies]
 rand = "0.9"
-totp-rs = "5"
+totp-rs = { version = "5", features = ["otpauth"] }
 thiserror = "2"
 zeroize = { version = "1", features = ["derive"] }
 
