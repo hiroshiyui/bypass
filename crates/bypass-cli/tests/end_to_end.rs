@@ -29,7 +29,7 @@ fn full_crud_flow() {
     // missing, so the recipients check fails → exit 1.
     bypass(&env).arg("doctor").assert().failure();
 
-    // init writes .gpg-id and (under NoVcs) does not create a git repo.
+    // init writes .gpg-id and (now backed by Git2Vcs) creates a repo.
     bypass(&env)
         .arg("init")
         .arg(common::TEST_RECIPIENT)
@@ -162,6 +162,55 @@ fn edit_persists_changes_through_an_external_editor() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with("v1appended"));
+}
+
+#[test]
+fn init_creates_a_git_repo_and_inserts_auto_commit() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+
+    // After init the store directory must contain a real git repo.
+    assert!(
+        env.store_dir.path().join(".git").is_dir(),
+        "init must create .git/ under the store root"
+    );
+
+    bypass(&env)
+        .args(["insert", "email/work"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+    bypass(&env).args(["rm", "email/work"]).assert().success();
+
+    // `bypass git log --oneline` should now show three commits: init,
+    // insert, remove. Run it through the passthrough subcommand so we
+    // exercise that code path too.
+    let out = bypass(&env)
+        .args(["git", "log", "--oneline"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).into_owned();
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 3, "expected 3 commits, got:\n{stdout}");
+    assert!(
+        lines[0].contains("Remove email/work"),
+        "head commit was {:?}",
+        lines[0]
+    );
+    assert!(
+        lines[1].contains("Add password for email/work"),
+        "second commit was {:?}",
+        lines[1]
+    );
+    assert!(
+        lines[2].contains("initialise store"),
+        "root commit was {:?}",
+        lines[2]
+    );
 }
 
 #[test]

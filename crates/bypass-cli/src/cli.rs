@@ -95,4 +95,12 @@ pub enum Command {
 
     /// Check the environment: gpg, keyring, store, recipients, $EDITOR, git.
     Doctor,
+
+    /// Run the system `git` against the store's repository.
+    /// Anything after `bypass git` is passed through verbatim.
+    Git {
+        /// Arguments to forward to `git`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }

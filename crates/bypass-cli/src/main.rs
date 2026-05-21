@@ -6,6 +6,7 @@ mod doctor;
 mod edit;
 mod storage_fs;
 mod tree;
+mod vcs_git2;
 
 use std::io::{self, Read, Write};
 use std::process::ExitCode;
@@ -14,12 +15,12 @@ use anyhow::{Context, Result, anyhow, bail};
 use bypass_core::crypto::KeyId;
 use bypass_core::path::RelPath;
 use bypass_core::store::Store;
-use bypass_core::vcs::NoVcs;
 use clap::Parser;
 
 use crate::cli::{Cli, Command};
 use crate::crypto_gpg::GpgCli;
 use crate::storage_fs::StorageFs;
+use crate::vcs_git2::Git2Vcs;
 
 fn main() -> ExitCode {
     match dispatch() {
@@ -133,6 +134,16 @@ fn dispatch() -> Result<u8> {
             eprintln!("copied {from_entry} to {to_entry}");
             Ok(0)
         }
+        Command::Git { args } => {
+            let root = StorageFs::resolve_default_root().context("resolve store root")?;
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(&args)
+                .status()
+                .with_context(|| format!("spawn `git` against {}", root.display()))?;
+            Ok(u8::try_from(status.code().unwrap_or(1)).unwrap_or(1))
+        }
         Command::Mv { from, to, force } => {
             let from_entry = parse_entry(&from)?;
             let to_entry = parse_entry(&to)?;
@@ -146,11 +157,12 @@ fn dispatch() -> Result<u8> {
     }
 }
 
-fn open_store() -> Result<Store<GpgCli, StorageFs, NoVcs>> {
+fn open_store() -> Result<Store<GpgCli, StorageFs, Git2Vcs>> {
     let root = StorageFs::resolve_default_root().context("resolve store root")?;
-    let storage = StorageFs::new(root);
+    let storage = StorageFs::new(root.clone());
     let crypto = GpgCli::new();
-    Ok(Store::new(crypto, storage, NoVcs))
+    let vcs = Git2Vcs::new(root);
+    Ok(Store::new(crypto, storage, vcs))
 }
 
 fn parse_entry(s: &str) -> Result<RelPath> {

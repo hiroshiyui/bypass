@@ -91,9 +91,9 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 ## Phase 2 — Git integration *(`vcs_git2` in `bypass-cli`)*
 
 ### Milestone 2.1: Repository management
-- [ ] `vcs_git2.rs`: init repo on `bypass init` when requested
-- [ ] Auto-commit on insert / edit / rm / cp / mv with meaningful messages
-- [ ] `bypass git ...` passthrough subcommand
+- [x] `vcs_git2.rs`: init repo on `bypass init` when requested
+- [x] Auto-commit on insert / edit / rm / cp / mv with meaningful messages
+- [x] `bypass git ...` passthrough subcommand
 
 ### Milestone 2.2: History UX
 - [ ] `bypass log [path]` — show commit history for an entry
