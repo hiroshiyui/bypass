@@ -1,7 +1,12 @@
 # bypass
 
-> ⚠️ **Work in progress — not usable yet.**
-> `bypass` is in early development. There is no working binary, no released version, and no commands to run. Nothing below describes software you can use today; it describes what the project is being built to become. Do **not** trust your passwords to it. If you need a password manager right now, use [`pass`](https://www.passwordstore.org/) — when `bypass` ships, your existing pass store will continue to work.
+> ⚠️ **Early development — not yet stable.**
+> The Linux CLI is feature-complete for basic CRUD and git-backed
+> versioning, but `bypass` has not been audited and has not cut a
+> tagged release. Do not migrate a production password store to it
+> yet. If you need a battle-tested password manager today, use
+> [`pass`](https://www.passwordstore.org/); when `bypass` ships,
+> your existing pass store will continue to work unchanged.
 
 A password manager that keeps your secrets in plain files on disk, encrypted with your own OpenPGP key — compatible with [`pass`](https://www.passwordstore.org/), but built to follow you across devices.
 
@@ -12,49 +17,80 @@ A password manager that keeps your secrets in plain files on disk, encrypted wit
 - **Sync the way you already sync.** Stores are git repositories. Push to your own server, GitHub, a USB stick, anything git can talk to.
 - **One password store, every device.** A single Rust core powers the Linux command line today, with an Android app and Firefox/Chrome browser extensions planned next — all reading the *same* store, encrypted to the *same* keys.
 
-## Where things stand
+## Status
 
-`bypass` is in **early development**. The architecture is in place but the user-facing commands are still being built. Track progress in [`doc/ROADMAP.md`](doc/ROADMAP.md). The shipping plan:
+`bypass` is **functional on Linux** for everyday password-manager use:
+basic CRUD (`init`, `insert`, `show`, `ls`, `find`, `rm`, `edit`,
+`cp`, `mv`), an environment doctor (`doctor`), and full git-backed
+history (every mutation auto-commits, and `bypass git …` forwards
+to your system `git`). Password generation, clipboard integration,
+structured-field/OTP support, and the browser/Android frontends are
+still ahead. Track progress in [`doc/ROADMAP.md`](doc/ROADMAP.md);
+load-bearing design decisions live in
+[`doc/adr/`](doc/adr/README.md).
 
 | Frontend | Status |
 |---|---|
-| Linux CLI (`bypass`) | 🚧 In progress |
+| Linux CLI (`bypass`) | ✅ Phases 1 & 2.1 shipped (CRUD + git versioning) |
 | Firefox & Chrome extension | 🗓 Planned (Phase 7) |
 | Android app | 🗓 Planned (Phase 8) |
 
-If you need a working password manager *today*, use [`pass`](https://www.passwordstore.org/). When `bypass` ships, your existing pass store will continue to work unchanged.
+## Getting started
 
-## How it will work *(planned — none of these commands work yet)*
-
-Once the Linux CLI is functional, typical use will look like:
+You need a Rust toolchain (edition 2024) and the system `gpg` binary
+on your `$PATH`. `bypass doctor` will check both for you, plus your
+store directory and recipients.
 
 ```sh
-# Set up a store encrypted to your GPG key
+git clone https://github.com/hiroshiyui/bypass.git
+cd bypass
+cargo build --release
+./target/release/bypass doctor
+```
+
+## Usage
+
+```sh
+# Set up a store encrypted to your GPG key (creates a git repo too)
 bypass init you@example.com
 
-# Add a password
+# Add a password (interactive: prompts twice with echo off)
 bypass insert github.com/you
+
+# Or pipe one in from a script
+echo "hunter2" | bypass insert -- github.com/you
 
 # Look it up
 bypass show github.com/you
 
-# Copy it to the clipboard (auto-clears after 45 seconds)
-bypass show -c github.com/you
-
-# Generate a strong password
-bypass generate github.com/you 32
-
 # Browse your store
 bypass ls
-bypass find github
+bypass ls email           # scoped to a subtree
+bypass find github        # substring search
+
+# Copy / move entries (re-encrypts when crossing a .gpg-id boundary)
+bypass cp  github.com/you  archive/github
+bypass mv  archive/github  archive/github-old
+
+# Edit an entry in $EDITOR (vi if unset); plaintext is staged to
+# /dev/shm when available so it never hits permanent storage
+bypass edit github.com/you
+
+# Securely delete (shred-style overwrite before unlink — see ADR-0008)
+bypass rm github.com/you
 ```
 
-Sync is just git:
+Sync is just git — every store is a real git repository, and the
+`bypass git` subcommand forwards arbitrary arguments to it:
 
 ```sh
 bypass git remote add origin git@example.com:you/passwords.git
-bypass git push
+bypass git push -u origin main
+bypass git log --oneline
 ```
+
+Still to come: `bypass generate`, `-c` clipboard mode, structured
+entries, TOTP — see [`doc/ROADMAP.md`](doc/ROADMAP.md).
 
 ## Crypto, briefly
 
