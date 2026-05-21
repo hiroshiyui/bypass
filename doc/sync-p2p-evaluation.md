@@ -326,9 +326,12 @@ to be possible for correctness.
 
 ## Open questions to resolve before implementation
 
-1. **PAKE choice**: SPAKE2 (audited via magic-wormhole) vs OPAQUE
-   vs a hand-rolled HKDF-of-PIN. Decision in a follow-up ADR
-   once the chosen crate has been read.
+1. **PAKE choice** — **resolved** in
+   [ADR-0012](adr/0012-pake-spake2.md): SPAKE2 via the `spake2`
+   crate, with 6-digit single-use PIN, 5-minute timeout, and
+   daemon-side rate-limiting. The ADR also fixes the
+   pinned-peers file format
+   (`$XDG_CONFIG_HOME/bypass/peers.toml`).
 2. **Daemon supervision** — **resolved**: deferred to
    [Phase 6 (Polish)](ROADMAP.md#phase-6--polish). Sub-milestone
    5.2.c ships the daemon itself runnable in the foreground;

@@ -30,3 +30,4 @@ Process and conventions are defined in
 | 0009 | [Refuse to push files that don't look like OpenPGP ciphertext](0009-leak-check-before-push.md) | Accepted |
 | 0010 | [Use libp2p (mDNS + Noise + request-response) for LAN P2P sync](0010-p2p-transport-libp2p.md) | Accepted |
 | 0011 | [Hybrid sync semantics: git pack on the wire, auto-rebase, manual fallback](0011-sync-semantics-hybrid.md) | Accepted |
+| 0012 | [Pairing PAKE: SPAKE2 via the `spake2` crate](0012-pake-spake2.md) | Accepted |
