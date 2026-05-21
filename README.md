@@ -31,7 +31,7 @@ load-bearing design decisions live in
 
 | Frontend | Status |
 |---|---|
-| Linux CLI (`bypass`) | ✅ Phases 1–4 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions) |
+| Linux CLI (`bypass`) | ✅ Phases 1–5.1 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions + sync + leak-check audit) |
 | Firefox & Chrome extension | 🗓 Planned (Phase 7) |
 | Android app | 🗓 Planned (Phase 8) |
 
@@ -142,7 +142,60 @@ bypass git push -u origin main
 bypass git log --oneline
 ```
 
-Still to come: a `bypass sync` shortcut (Phase 5), and the browser /
+Once a remote is configured, `bypass sync` is a one-shot
+`git pull --rebase` + `git push`:
+
+```sh
+bypass sync                # pull --rebase, then push
+bypass sync --force        # skip the leak-check audit (see below)
+```
+
+### Safety net: leak-check audit
+
+Before pushing, `bypass sync` runs a quick audit over the commits
+about to be published and **refuses to push if anything doesn't
+look like OpenPGP ciphertext** — say, a stray editor swap file
+(`.work.gpg.swp`), a `.gpg` file that's actually plaintext, or an
+unexpected file like `notes.txt`. The same check is available
+standalone as `bypass audit` and shows up as a row in
+`bypass doctor`. See [ADR-0009](doc/adr/0009-leak-check-before-push.md)
+for the full rationale.
+
+```sh
+bypass audit       # exit 0 if clean; exit 1 with a list of issues
+bypass sync        # refuses on any issue
+bypass sync --force  # explicit override
+```
+
+If you intentionally commit a non-`.gpg` file (e.g. a `README.md`
+that travels with the store), `audit` allows it; it only flags
+files outside the recognised allowlist.
+
+### Conflict resolution
+
+Encrypted `.gpg` files can't be auto-merged by git — it sees them
+as binary. When `bypass sync` fails mid-rebase, you have three
+reasonable choices:
+
+1. **Take theirs** (overwrite local with remote):
+   ```sh
+   bypass git checkout --theirs <path>.gpg
+   bypass git add <path>.gpg
+   bypass git rebase --continue
+   ```
+2. **Take mine** (keep local, throw remote away):
+   ```sh
+   bypass git checkout --ours <path>.gpg
+   bypass git add <path>.gpg
+   bypass git rebase --continue
+   ```
+3. **Hand-merge**: `bypass edit <entry>` to merge the plaintexts
+   manually, `bypass git add`, then `bypass git rebase --continue`.
+
+Last resort: `bypass git rebase --abort` to bail out, decide on a
+strategy, then re-attempt `bypass sync`.
+
+Still to come: LAN P2P sync (Phase 5.2, stretch) and the browser /
 Android frontends (Phases 7 & 8) — see
 [`doc/ROADMAP.md`](doc/ROADMAP.md).
 
