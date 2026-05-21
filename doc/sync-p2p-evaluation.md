@@ -362,10 +362,14 @@ to be possible for correctness.
    as a Cross-cutting invariant in [`ROADMAP.md`](ROADMAP.md#cross-cutting).
    Phase 5.2.b's merge driver will extend the same line with
    `merge=bypass-take-theirs` per [ADR-0011](adr/0011-sync-semantics-hybrid.md).
-4. **Clock handling for any per-entry metadata we might add**
-   (last-modified timestamps, peer-id of last writer). The hybrid
-   model doesn't strictly need these on the wire, but a future
-   `bypass sync status` UX wants them.
+4. **Clock handling for any per-entry metadata we might add** —
+   **resolved** in [ADR-0014](adr/0014-sync-metadata-and-ordering.md):
+   Phase 5.2 adds no per-entry metadata. Git commit fields
+   (`author_time`, `committer`, `author_email`) carry everything
+   `bypass sync status` needs; each device sets a stable
+   `user.name` / `user.email` at daemon startup for attribution.
+   Wall-clock time is used only locally (the pairing PIN's
+   5-minute timeout, ADR-0012), never for cross-device ordering.
 5. **Test strategy** — **resolved** in
    [ADR-0013](adr/0013-sync-transport-trait.md): a request-response
    `Transport` trait with two implementations (`Libp2pTransport`
@@ -420,17 +424,27 @@ should be resolved and whether it warrants its own ADR.
     transfers… what? A full pack? Negotiated `have`/`want`? Is
     there a disk-budget guard? **5.2.b planning detail.**
 
-12. **Rebase tie-breaker for symmetric divergence.** Both peers
-    diverged with disjoint commits. *Who rebases onto whom?*
-    Without a deterministic tie-breaker (peer-id lexical order;
-    latest-commit-timestamp wins; …) both sides could rebase
-    concurrently and re-diverge. **5.2.b planning detail.**
+12. **Rebase tie-breaker for symmetric divergence** —
+    **resolved** in [ADR-0014](adr/0014-sync-metadata-and-ordering.md):
+    peer-ID lexical order. Lower peer-ID rebases onto the higher.
+    Clock-free, deterministic, adversary-resistant; both sides
+    compute the same answer locally without negotiation.
 
 13. **Battery / background-sync on mobile.** Once Android (Phase
     8) gets the daemon, always-on TCP listeners drain battery.
     Likely needs an interval-poll mode or external scheduler
     integration. Out of scope for Phase 5.2; flagged so Phase 8
     planning doesn't rediscover it.
+
+14. **Cryptographic commit-level attribution (signed commits).**
+    [ADR-0014](adr/0014-sync-metadata-and-ordering.md) explicitly
+    defers this. Phase 5.2 attributes via `user.name`, which a
+    compromised paired peer can spoof. A future ADR — likely
+    sometime after Phase 5.2.d ships and we have implementation
+    experience — should weigh signing every commit with the
+    libp2p identity key plus verification on receive. Until then,
+    `bypass sync status` attribution is best-effort, not
+    cryptographically authenticated. **Future ADR (post-5.2).**
 
 ## Next steps
 

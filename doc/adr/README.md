@@ -32,3 +32,4 @@ Process and conventions are defined in
 | 0011 | [Hybrid sync semantics: git pack on the wire, auto-rebase, manual fallback](0011-sync-semantics-hybrid.md) | Accepted |
 | 0012 | [Pairing PAKE: SPAKE2 via the `spake2` crate](0012-pake-spake2.md) | Accepted |
 | 0013 | [Sync testability: a `Transport` trait + in-process fake](0013-sync-transport-trait.md) | Accepted |
+| 0014 | [Sync metadata: git commit fields only, no sidecars, no wall-clock ordering](0014-sync-metadata-and-ordering.md) | Accepted |
