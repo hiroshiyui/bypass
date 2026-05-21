@@ -82,6 +82,7 @@ pub fn run() -> i32 {
     run_check_editor(&mut checks);
     run_check_git(&mut checks);
     if let Some(r) = &root {
+        run_check_gitattributes(&mut checks, r);
         run_check_leak_audit(&mut checks, r);
     }
 
@@ -276,6 +277,50 @@ fn run_check_git(checks: &mut Vec<Check>) {
             "git",
             "git binary not found; `bypass sync` will be unavailable",
         )),
+    }
+}
+
+fn run_check_gitattributes(checks: &mut Vec<Check>, root: &Path) {
+    let path = root.join(".gitattributes");
+    if !path.exists() {
+        checks.push(Check::fail(
+            ".gitattributes",
+            "missing; `bypass sync` will install `*.gpg binary` automatically on next run",
+        ));
+        return;
+    }
+    let body = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => {
+            checks.push(Check::warn(
+                ".gitattributes",
+                format!("cannot read {}: {e}", path.display()),
+            ));
+            return;
+        }
+    };
+    let text = String::from_utf8_lossy(&body);
+    let has_rule = text.lines().any(|line| {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return false;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(pattern) = parts.next() else {
+            return false;
+        };
+        pattern == "*.gpg" && parts.any(|tok| tok == "binary")
+    });
+    if has_rule {
+        checks.push(Check::ok(
+            ".gitattributes",
+            "carries `*.gpg binary` rule (line-ending normalisation disabled)",
+        ));
+    } else {
+        checks.push(Check::fail(
+            ".gitattributes",
+            "missing `*.gpg binary` rule; cross-platform clones may corrupt ciphertext",
+        ));
     }
 }
 

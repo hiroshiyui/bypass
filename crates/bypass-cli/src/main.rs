@@ -341,6 +341,10 @@ fn sync(force: bool) -> Result<u8> {
             pull.code().unwrap_or(-1)
         );
     }
+    // Lazy-install `.gitattributes` on legacy stores that pre-date the
+    // auto-write in `Store::init`. Doing this before the audit so the
+    // freshly committed file rides along with the upcoming push.
+    install_gitattributes_if_missing(&root)?;
     if !force {
         let issues = audit::audit_for_push(&root)?;
         if !issues.is_empty() {
@@ -373,6 +377,30 @@ fn sync(force: bool) -> Result<u8> {
     }
     eprintln!("synced.");
     Ok(0)
+}
+
+/// Ensure `.gitattributes` carries the `*.gpg binary` rule; if not, write
+/// and commit it before continuing. Used by `bypass sync` so legacy
+/// stores (created before this rule shipped) get upgraded transparently.
+fn install_gitattributes_if_missing(root: &std::path::Path) -> Result<()> {
+    let storage = StorageFs::new(root.to_path_buf());
+    let crypto = GpgCli::new();
+    let vcs = Git2Vcs::new(root.to_path_buf());
+    let mut store = Store::new(crypto, storage, vcs);
+    let changed = store.install_gitattributes().map_err(map_store_err)?;
+    if changed {
+        let attrs_path = RelPath::new(".gitattributes").expect(".gitattributes is a valid RelPath");
+        // Commit the new file so the rule travels with the push.
+        let mut vcs2 = Git2Vcs::new(root.to_path_buf());
+        bypass_core::vcs::VersionControl::commit(
+            &mut vcs2,
+            &[attrs_path],
+            "bypass: install .gitattributes for binary `.gpg` files",
+        )
+        .map_err(anyhow::Error::new)?;
+        eprintln!("bypass: installed missing `.gitattributes` rule");
+    }
+    Ok(())
 }
 
 fn audit_cmd() -> Result<u8> {

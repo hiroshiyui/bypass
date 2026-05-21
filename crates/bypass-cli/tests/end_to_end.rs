@@ -488,6 +488,86 @@ fn otp_without_otpauth_uri_fails_with_helpful_message() {
 }
 
 #[test]
+fn init_writes_gitattributes_with_gpg_binary_rule() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    let body = std::fs::read_to_string(env.store_dir.path().join(".gitattributes"))
+        .expect(".gitattributes was written");
+    assert!(body.contains("*.gpg binary"), ".gitattributes was {body:?}");
+}
+
+#[test]
+#[cfg(unix)]
+fn sync_lazily_installs_gitattributes_on_legacy_stores() {
+    let env = common::TestEnv::new();
+    let remote = bare_remote();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+
+    // Simulate a legacy store created before the auto-install: drop
+    // `.gitattributes` from disk *and* from the git index, then commit
+    // its removal. From this point the store is in the shape an
+    // upgraded user would be in.
+    let attrs = env.store_dir.path().join(".gitattributes");
+    assert!(attrs.exists(), "init should have written .gitattributes");
+    bypass(&env)
+        .args(["git", "rm", ".gitattributes"])
+        .assert()
+        .success();
+    bypass(&env)
+        .args([
+            "git",
+            "commit",
+            "-m",
+            "drop .gitattributes (simulating legacy store)",
+        ])
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.invalid")
+        .assert()
+        .success();
+    assert!(!attrs.exists(), "removal didn't take effect");
+
+    let branch = current_branch(&env);
+    bypass(&env)
+        .args(["git", "remote", "add", "origin"])
+        .arg(remote.path())
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["git", "push", "-u", "origin", &branch])
+        .assert()
+        .success();
+
+    bypass(&env).arg("sync").assert().success();
+
+    // The lazy install should have re-created the file and committed it.
+    let body = std::fs::read_to_string(&attrs).expect("sync should have restored .gitattributes");
+    assert!(body.contains("*.gpg binary"), ".gitattributes was {body:?}");
+
+    // Verify the commit is real and reached the remote.
+    let log = std::process::Command::new("git")
+        .arg("-C")
+        .arg(env.store_dir.path())
+        .args(["log", "--oneline", "-1"])
+        .output()
+        .unwrap();
+    let head_summary = String::from_utf8(log.stdout).unwrap();
+    assert!(
+        head_summary.contains("install .gitattributes"),
+        "head commit was {head_summary:?}"
+    );
+}
+
+#[test]
 #[cfg(unix)]
 fn ext_runs_an_extension_and_passes_env_vars() {
     use std::os::unix::fs::PermissionsExt;

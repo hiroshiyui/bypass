@@ -209,3 +209,4 @@ Strategy: native Jetpack Compose UI on top of `bypass-core` exposed via [UniFFI]
 - Never log decrypted content or write it outside tempfiles.
 - All secrets in memory wrapped in `zeroize`-cleaned buffers.
 - Every new dependency in `bypass-core` must compile on Android NDK and (eventually) `wasm32-unknown-unknown` if a future browser-side WASM bypass is reconsidered.
+- Stores carry a `.gitattributes` with `*.gpg binary` to disable line-ending normalisation on cross-platform clones (Windows `core.autocrlf` would otherwise corrupt ciphertext). Written by `bypass init`; lazily installed by `bypass sync` on stores that pre-date the rule; surfaced by `bypass doctor`. Phase 5.2.b's merge driver extends — does not replace — this line.

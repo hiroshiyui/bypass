@@ -101,9 +101,11 @@ where
     }
 
     /// Initialise the store: write `.gpg-id` with `recipients` (one per
-    /// line) and ask the [`VersionControl`] to initialise the repository.
-    /// An initial commit is created for the `.gpg-id`. Both `vcs.init` and
-    /// `vcs.commit` are no-ops under [`crate::vcs::NoVcs`].
+    /// line), seed `.gitattributes` so `.gpg` files survive line-ending
+    /// normalisation on cross-platform clones, and ask the
+    /// [`VersionControl`] to initialise the repository. Both files are
+    /// included in the initial commit. `vcs.init` and `vcs.commit` are
+    /// no-ops under [`crate::vcs::NoVcs`].
     pub fn init(&mut self, recipients: &[KeyId]) -> Result<(), C, S, V> {
         if recipients.is_empty() {
             return Err(StoreError::GpgIdMalformed("no recipients"));
@@ -117,11 +119,65 @@ where
         self.storage
             .write(&gpg_id_path, body.as_bytes())
             .map_err(StoreError::Storage)?;
+
+        let attrs_path = gitattributes_path();
+        let attrs_changed = self.install_gitattributes()?;
+
         self.vcs.init().map_err(StoreError::Vcs)?;
+
+        let mut paths = vec![gpg_id_path];
+        if attrs_changed {
+            paths.push(attrs_path);
+        }
         self.vcs
-            .commit(&[gpg_id_path], "bypass: initialise store")
+            .commit(&paths, "bypass: initialise store")
             .map_err(StoreError::Vcs)?;
         Ok(())
+    }
+
+    /// Append the `*.gpg binary` rule to `.gitattributes` if it is not
+    /// already present. Idempotent. Returns `Ok(true)` when the file was
+    /// actually written (i.e. the rule was newly added or the file was
+    /// freshly created), `Ok(false)` when no change was needed.
+    ///
+    /// Without this rule, `core.autocrlf=true` (the default on Windows
+    /// clones) can decide a `.gpg` blob is text and normalise its line
+    /// endings on checkout, corrupting the ciphertext irretrievably.
+    pub fn install_gitattributes(&mut self) -> Result<bool, C, S, V> {
+        let path = gitattributes_path();
+        let existing = self
+            .storage
+            .read(&path)
+            .map_err(StoreError::Storage)?
+            .unwrap_or_default();
+        if has_gpg_binary_rule(&existing) {
+            return Ok(false);
+        }
+        let mut new_body = existing;
+        // Make sure we don't accidentally concatenate onto a line that
+        // doesn't end in a newline.
+        if let Some(&last) = new_body.last()
+            && last != b'\n'
+        {
+            new_body.push(b'\n');
+        }
+        new_body.extend_from_slice(GITATTRIBUTES_RULE.as_bytes());
+        self.storage
+            .write(&path, &new_body)
+            .map_err(StoreError::Storage)?;
+        Ok(true)
+    }
+
+    /// Whether `.gitattributes` carries the `*.gpg binary` rule. Used by
+    /// `bypass doctor` to surface stores that pre-date the auto-install.
+    pub fn gitattributes_has_gpg_binary_rule(&self) -> Result<bool, C, S, V> {
+        let path = gitattributes_path();
+        let body = self
+            .storage
+            .read(&path)
+            .map_err(StoreError::Storage)?
+            .unwrap_or_default();
+        Ok(has_gpg_binary_rule(&body))
     }
 
     /// Encrypt `plaintext` to the recipients resolved for `entry` and
@@ -337,6 +393,36 @@ fn gpg_id_path() -> RelPath {
     RelPath::new(".gpg-id").expect(".gpg-id is a valid RelPath")
 }
 
+fn gitattributes_path() -> RelPath {
+    RelPath::new(".gitattributes").expect(".gitattributes is a valid RelPath")
+}
+
+/// The single attribute rule [`Store::install_gitattributes`] guarantees
+/// is present. Trailing newline is included so the appender doesn't
+/// produce a malformed file when concatenating onto an existing line.
+pub const GITATTRIBUTES_RULE: &str = "*.gpg binary\n";
+
+/// Does `body` already declare `*.gpg` as binary? We tolerate any
+/// whitespace shape and any extra attributes (e.g. `*.gpg binary
+/// merge=bypass-take-theirs` that ADR-0011 will add later) — the
+/// invariant we care about is the `binary` attribute on `*.gpg`.
+fn has_gpg_binary_rule(body: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(body) else {
+        return false;
+    };
+    text.lines().any(|line| {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return false;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(pattern) = parts.next() else {
+            return false;
+        };
+        pattern == "*.gpg" && parts.any(|tok| tok == "binary")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -436,6 +522,70 @@ mod tests {
     fn entry_to_blob_appends_gpg() {
         assert_eq!(entry_to_blob(&rp("a")).as_str(), "a.gpg");
         assert_eq!(entry_to_blob(&rp("a/b/c")).as_str(), "a/b/c.gpg");
+    }
+
+    #[test]
+    fn init_writes_gitattributes_with_gpg_binary_rule() {
+        let mut store = fresh_store();
+        store.init(&[KeyId::new("ALICE")]).unwrap();
+        let bytes = store
+            .storage
+            .files
+            .get(".gitattributes")
+            .expect(".gitattributes was written");
+        assert!(
+            std::str::from_utf8(bytes).unwrap().contains("*.gpg binary"),
+            ".gitattributes was {:?}",
+            String::from_utf8_lossy(bytes)
+        );
+    }
+
+    #[test]
+    fn install_gitattributes_is_idempotent() {
+        let mut store = fresh_store();
+        store.init(&[KeyId::new("ALICE")]).unwrap();
+        // After init the rule is already present; a second install must
+        // not write and must report no change.
+        assert!(!store.install_gitattributes().unwrap());
+        // Calling again still no-ops.
+        assert!(!store.install_gitattributes().unwrap());
+    }
+
+    #[test]
+    fn install_gitattributes_appends_to_existing_unrelated_file() {
+        let mut store = fresh_store();
+        // Pre-seed with unrelated user-managed attributes.
+        store.storage.files.insert(
+            ".gitattributes".to_owned(),
+            b"# my notes\n*.md text eol=lf\n".to_vec(),
+        );
+        let changed = store.install_gitattributes().unwrap();
+        assert!(changed);
+        let body = store.storage.files.get(".gitattributes").unwrap();
+        let text = std::str::from_utf8(body).unwrap();
+        assert!(text.contains("# my notes"), "pre-existing content lost");
+        assert!(text.contains("*.md text eol=lf"), "pre-existing rule lost");
+        assert!(text.contains("*.gpg binary"), "new rule not appended");
+    }
+
+    #[test]
+    fn install_gitattributes_recognises_extended_rule_form() {
+        // Phase 5.2.b will extend the line to add a merge driver.
+        // The detector must treat that extended form as "already present".
+        let mut store = fresh_store();
+        store.storage.files.insert(
+            ".gitattributes".to_owned(),
+            b"*.gpg binary merge=bypass-take-theirs\n".to_vec(),
+        );
+        assert!(!store.install_gitattributes().unwrap());
+    }
+
+    #[test]
+    fn gitattributes_has_gpg_binary_rule_reflects_state() {
+        let mut store = fresh_store();
+        assert!(!store.gitattributes_has_gpg_binary_rule().unwrap());
+        store.init(&[KeyId::new("ALICE")]).unwrap();
+        assert!(store.gitattributes_has_gpg_binary_rule().unwrap());
     }
 
     #[test]

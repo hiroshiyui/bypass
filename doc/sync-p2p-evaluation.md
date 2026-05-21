@@ -338,10 +338,13 @@ to be possible for correctness.
    Phase 6 adds the cross-platform service-management glue
    (systemd user unit on Linux, launchd agent on macOS) with the
    matching `start`/`stop`/`status`/`enable` UX.
-3. **`.gitattributes` for `.gpg` files** — set `binary` so git
-   doesn't try line-ending normalisation across platforms. Should
-   be set in `bypass init` by default? Suggested for a tiny
-   follow-up commit, independent of Phase 5.2.
+3. **`.gitattributes` for `.gpg` files** — **resolved**:
+   `bypass init` now writes `.gitattributes` with `*.gpg binary`;
+   `bypass sync` lazily installs the rule on stores that pre-date
+   it; `bypass doctor` surfaces the missing-rule case. Recorded
+   as a Cross-cutting invariant in [`ROADMAP.md`](ROADMAP.md#cross-cutting).
+   Phase 5.2.b's merge driver will extend the same line with
+   `merge=bypass-take-theirs` per [ADR-0011](adr/0011-sync-semantics-hybrid.md).
 4. **Clock handling for any per-entry metadata we might add**
    (last-modified timestamps, peer-id of last writer). The hybrid
    model doesn't strictly need these on the wire, but a future
