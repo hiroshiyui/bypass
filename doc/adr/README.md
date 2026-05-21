@@ -31,3 +31,4 @@ Process and conventions are defined in
 | 0010 | [Use libp2p (mDNS + Noise + request-response) for LAN P2P sync](0010-p2p-transport-libp2p.md) | Accepted |
 | 0011 | [Hybrid sync semantics: git pack on the wire, auto-rebase, manual fallback](0011-sync-semantics-hybrid.md) | Accepted |
 | 0012 | [Pairing PAKE: SPAKE2 via the `spake2` crate](0012-pake-spake2.md) | Accepted |
+| 0013 | [Sync testability: a `Transport` trait + in-process fake](0013-sync-transport-trait.md) | Accepted |

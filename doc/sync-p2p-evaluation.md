@@ -349,11 +349,13 @@ to be possible for correctness.
    (last-modified timestamps, peer-id of last writer). The hybrid
    model doesn't strictly need these on the wire, but a future
    `bypass sync status` UX wants them.
-5. **Test strategy.** Two-peer integration tests need either real
-   loopback libp2p or a mocked transport. The latter is more
-   reliable in CI; the former gives us higher confidence. Plan to
-   use a `Transport` trait in `bypass-sync` so unit tests can use
-   an in-process channel.
+5. **Test strategy** — **resolved** in
+   [ADR-0013](adr/0013-sync-transport-trait.md): a request-response
+   `Transport` trait with two implementations (`Libp2pTransport`
+   for production, `InProcessTransport` for unit tests). Three
+   test layers: unit (against the fake), small focused libp2p
+   loopback (run by default), and `assert_cmd` two-process
+   daemon tests (`#[ignore]` by default, runnable on demand).
 
 ## Next steps
 
