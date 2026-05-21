@@ -93,6 +93,13 @@ pub enum Command {
         force: bool,
     },
 
+    /// Show commit history. With a path, only commits that touched the
+    /// matching entry (or anything below it) are shown.
+    Log {
+        /// Optional entry path or subtree prefix.
+        path: Option<String>,
+    },
+
     /// Check the environment: gpg, keyring, store, recipients, $EDITOR, git.
     Doctor,
 

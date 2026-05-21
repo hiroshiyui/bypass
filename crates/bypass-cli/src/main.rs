@@ -36,6 +36,16 @@ fn dispatch() -> Result<u8> {
     let args = Cli::parse();
     match args.command {
         Command::Doctor => Ok(doctor::run() as u8),
+        Command::Log { path } => {
+            let entry = path.as_deref().map(parse_entry).transpose()?;
+            let store = open_store()?;
+            let commits = store.log(entry.as_ref()).map_err(map_store_err)?;
+            for c in &commits {
+                let short = c.id.get(..7).unwrap_or(c.id.as_str());
+                println!("{short} {}", c.summary);
+            }
+            Ok(0)
+        }
         Command::Init { gpg_ids } => {
             let mut store = open_store()?;
             let keys: Vec<KeyId> = gpg_ids.into_iter().map(KeyId::new).collect();

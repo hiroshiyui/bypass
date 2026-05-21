@@ -28,6 +28,15 @@ pub enum Git2Error {
         #[source]
         source: std::io::Error,
     },
+
+    /// The repository is mid-merge, mid-rebase, mid-cherry-pick, etc.
+    /// We refuse to write auto-commits over an in-progress operation so
+    /// the user can finish or abort it without `bypass`'s commits getting
+    /// tangled into the resolution.
+    #[error(
+        "git repository is in an unfinished {state} state; finish or abort it (e.g. `bypass git merge --abort`) before running this command"
+    )]
+    DirtyTree { state: &'static str },
 }
 
 fn io_err(path: impl Into<PathBuf>, source: std::io::Error) -> Git2Error {
@@ -78,6 +87,9 @@ impl VersionControl for Git2Vcs {
             return Ok(());
         }
         let repo = self.open()?;
+        if let Some(state) = unfinished_state(&repo) {
+            return Err(Git2Error::DirtyTree { state });
+        }
         let mut index = repo.index()?;
 
         // Stage each path. If the file is gone, remove it from the index;
@@ -118,7 +130,7 @@ impl VersionControl for Git2Vcs {
         Ok(())
     }
 
-    fn log(&self, path: &RelPath) -> Result<Vec<Commit>, Self::Error> {
+    fn log(&self, path: Option<&RelPath>) -> Result<Vec<Commit>, Self::Error> {
         if !self.is_initialized()? {
             return Ok(Vec::new());
         }
@@ -130,12 +142,14 @@ impl VersionControl for Git2Vcs {
         }
         walker.set_sorting(git2::Sort::TIME)?;
 
-        let needle = path.as_str();
+        let needle = path.map(|p| p.as_str());
         let mut out = Vec::new();
         for oid in walker {
             let oid = oid?;
             let c = repo.find_commit(oid)?;
-            if !touches_path(&repo, &c, needle)? {
+            if let Some(n) = needle
+                && !touches_path(&repo, &c, n)?
+            {
                 continue;
             }
             let author = c.author();
@@ -190,6 +204,21 @@ fn touches_path(
     Ok(hit)
 }
 
+/// Map a non-clean repository state to a short human label, or `None`
+/// if the tree is in the normal `Clean` state (auto-commit safe).
+fn unfinished_state(repo: &git2::Repository) -> Option<&'static str> {
+    use git2::RepositoryState as S;
+    match repo.state() {
+        S::Clean => None,
+        S::Merge => Some("merge"),
+        S::Revert | S::RevertSequence => Some("revert"),
+        S::CherryPick | S::CherryPickSequence => Some("cherry-pick"),
+        S::Bisect => Some("bisect"),
+        S::Rebase | S::RebaseInteractive | S::RebaseMerge => Some("rebase"),
+        S::ApplyMailbox | S::ApplyMailboxOrRebase => Some("am"),
+    }
+}
+
 fn signature(repo: &git2::Repository) -> Result<git2::Signature<'static>, Git2Error> {
     let cfg = repo.config()?;
     let name = cfg
@@ -237,7 +266,7 @@ mod tests {
         vcs.init().unwrap();
         // No history yet — must stay no-op without erroring.
         vcs.commit(&[], "noop").unwrap();
-        assert!(vcs.log(&rp("anything")).unwrap().is_empty());
+        assert!(vcs.log(Some(&rp("anything"))).unwrap().is_empty());
     }
 
     #[test]
@@ -248,7 +277,7 @@ mod tests {
         vcs.commit(&[rp("file.gpg")], "bypass: Add password for file")
             .unwrap();
 
-        let log = vcs.log(&rp("file.gpg")).unwrap();
+        let log = vcs.log(Some(&rp("file.gpg"))).unwrap();
         assert_eq!(log.len(), 1);
         assert_eq!(log[0].summary, "bypass: Add password for file");
     }
@@ -262,7 +291,7 @@ mod tests {
         fs::write(td.path().join("file.gpg"), b"v2").unwrap();
         vcs.commit(&[rp("file.gpg")], "Update file").unwrap();
 
-        let log = vcs.log(&rp("file.gpg")).unwrap();
+        let log = vcs.log(Some(&rp("file.gpg"))).unwrap();
         assert_eq!(log.len(), 2);
         // Newest first (TIME sort).
         assert_eq!(log[0].summary, "Update file");
@@ -278,7 +307,7 @@ mod tests {
         fs::write(td.path().join("b.gpg"), b"b").unwrap();
         vcs.commit(&[rp("b.gpg")], "Add b").unwrap();
 
-        let log = vcs.log(&rp("a.gpg")).unwrap();
+        let log = vcs.log(Some(&rp("a.gpg"))).unwrap();
         assert_eq!(log.len(), 1);
         assert_eq!(log[0].summary, "Add a");
     }
@@ -292,9 +321,49 @@ mod tests {
         fs::remove_file(td.path().join("file.gpg")).unwrap();
         vcs.commit(&[rp("file.gpg")], "Remove").unwrap();
 
-        let log = vcs.log(&rp("file.gpg")).unwrap();
+        let log = vcs.log(Some(&rp("file.gpg"))).unwrap();
         assert_eq!(log.len(), 2);
         assert_eq!(log[0].summary, "Remove");
+    }
+
+    #[test]
+    fn commit_refuses_when_repo_is_in_merge_state() {
+        let (td, mut vcs) = fresh();
+        vcs.init().unwrap();
+        // Need at least one commit so we have a real HEAD to land on.
+        fs::write(td.path().join("file.gpg"), b"v1").unwrap();
+        vcs.commit(&[rp("file.gpg")], "Add file").unwrap();
+
+        // Drop a MERGE_HEAD marker. libgit2's Repository::state() reads
+        // these marker files, so this is enough to force the state to
+        // `Merge` without actually running a real merge that would need
+        // a second branch.
+        let head_oid = git2::Repository::open(td.path())
+            .unwrap()
+            .head()
+            .unwrap()
+            .target()
+            .unwrap();
+        fs::write(td.path().join(".git/MERGE_HEAD"), head_oid.to_string()).unwrap();
+
+        fs::write(td.path().join("file.gpg"), b"v2").unwrap();
+        let err = vcs.commit(&[rp("file.gpg")], "Update").unwrap_err();
+        assert!(matches!(err, Git2Error::DirtyTree { state: "merge" }));
+    }
+
+    #[test]
+    fn log_with_none_returns_all_commits() {
+        let (td, mut vcs) = fresh();
+        vcs.init().unwrap();
+        fs::write(td.path().join("a.gpg"), b"a").unwrap();
+        vcs.commit(&[rp("a.gpg")], "Add a").unwrap();
+        fs::write(td.path().join("b.gpg"), b"b").unwrap();
+        vcs.commit(&[rp("b.gpg")], "Add b").unwrap();
+
+        let log = vcs.log(None).unwrap();
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0].summary, "Add b");
+        assert_eq!(log[1].summary, "Add a");
     }
 
     #[test]
@@ -309,7 +378,7 @@ mod tests {
         vcs.init().unwrap();
         fs::write(td.path().join("x.gpg"), b"x").unwrap();
         vcs.commit(&[rp("x.gpg")], "Add x").unwrap();
-        let log = vcs.log(&rp("x.gpg")).unwrap();
+        let log = vcs.log(Some(&rp("x.gpg"))).unwrap();
         assert_eq!(log.len(), 1);
         let author = log[0].author.as_deref().unwrap_or("");
         assert!(!author.is_empty(), "commit must have a non-empty author");

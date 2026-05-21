@@ -275,6 +275,15 @@ where
         Ok(to_blob)
     }
 
+    /// Version-control history, newest first. With `entry = Some(p)` the
+    /// result is filtered to commits whose diff touches `p.gpg` (and
+    /// anything underneath); with `None`, the entire commit log is
+    /// returned. Empty under [`crate::vcs::NoVcs`].
+    pub fn log(&self, entry: Option<&RelPath>) -> Result<Vec<crate::vcs::Commit>, C, S, V> {
+        let blob = entry.map(entry_to_blob);
+        self.vcs.log(blob.as_ref()).map_err(StoreError::Vcs)
+    }
+
     /// Delete every entry under `prefix`. Returns the list of entries
     /// that were removed. If `prefix` contains no entries, returns
     /// `NotFound` so the CLI does not silently succeed on a typo.

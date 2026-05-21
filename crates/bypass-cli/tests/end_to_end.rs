@@ -214,6 +214,93 @@ fn init_creates_a_git_repo_and_inserts_auto_commit() {
 }
 
 #[test]
+fn log_shows_full_and_filtered_history() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "email/work"])
+        .write_stdin("p1")
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "bank/visa"])
+        .write_stdin("p2")
+        .assert()
+        .success();
+
+    // Full log: 3 commits (init + two inserts). Same-second timestamps
+    // make intra-second ordering implementation-defined, so we assert
+    // membership rather than exact sequence.
+    let out = bypass(&env).arg("log").assert().success();
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).into_owned();
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 3, "full log was:\n{stdout}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("Add password for bank/visa")),
+        "expected bank/visa commit, got:\n{stdout}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("Add password for email/work")),
+        "expected email/work commit, got:\n{stdout}"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("initialise store")),
+        "expected init commit, got:\n{stdout}"
+    );
+
+    // Path-filtered log: only the bank/visa commit (init touches
+    // `.gpg-id`, not `bank/visa.gpg`).
+    let out = bypass(&env).args(["log", "bank/visa"]).assert().success();
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).into_owned();
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 1, "filtered log was:\n{stdout}");
+    assert!(lines[0].contains("Add password for bank/visa"));
+}
+
+#[test]
+fn mutations_refuse_when_repo_is_mid_merge() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "note"])
+        .write_stdin("v1")
+        .assert()
+        .success();
+
+    // Drop a MERGE_HEAD marker so the next mutation thinks the repo is
+    // mid-merge and refuses. Use git rev-parse via the passthrough so we
+    // don't depend on libgit2 from a test.
+    let head_oid = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(env.store_dir.path())
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .expect("git rev-parse")
+        .stdout;
+    let head_oid = String::from_utf8(head_oid).unwrap().trim().to_owned();
+    std::fs::write(env.store_dir.path().join(".git/MERGE_HEAD"), &head_oid).unwrap();
+
+    bypass(&env)
+        .args(["insert", "other"])
+        .write_stdin("v2")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("merge"));
+}
+
+#[test]
 fn edit_with_unchanged_buffer_reports_no_changes() {
     let env = common::TestEnv::new();
     bypass(&env)

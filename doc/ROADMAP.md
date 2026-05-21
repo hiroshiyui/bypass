@@ -96,8 +96,8 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] `bypass git ...` passthrough subcommand
 
 ### Milestone 2.2: History UX
-- [ ] `bypass log [path]` — show commit history for an entry
-- [ ] Handle dirty working tree gracefully (refuse, or stash)
+- [x] `bypass log [path]` — show commit history for an entry
+- [x] Handle dirty working tree gracefully (refuse, or stash)
 
 ---
 

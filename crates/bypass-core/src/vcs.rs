@@ -44,9 +44,11 @@ pub trait VersionControl {
     /// the listed paths have changed.
     fn commit(&mut self, paths: &[RelPath], message: &str) -> Result<(), Self::Error>;
 
-    /// Commit history for an entry, newest first. An unbounded log is
-    /// acceptable for now; pagination can be added later if needed.
-    fn log(&self, path: &RelPath) -> Result<Vec<Commit>, Self::Error>;
+    /// Commit history, newest first. When `path` is `Some(p)` only commits
+    /// whose diff touches `p` (or anything under `p/`) are returned; when
+    /// `None`, every commit reachable from `HEAD` is returned. An unbounded
+    /// log is acceptable for now; pagination can be added later if needed.
+    fn log(&self, path: Option<&RelPath>) -> Result<Vec<Commit>, Self::Error>;
 }
 
 /// A no-op [`VersionControl`] for stores that should not be versioned.
@@ -73,7 +75,7 @@ impl VersionControl for NoVcs {
         Ok(())
     }
 
-    fn log(&self, _path: &RelPath) -> Result<Vec<Commit>, Self::Error> {
+    fn log(&self, _path: Option<&RelPath>) -> Result<Vec<Commit>, Self::Error> {
         Ok(Vec::new())
     }
 }
