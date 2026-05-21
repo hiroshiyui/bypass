@@ -329,9 +329,12 @@ to be possible for correctness.
 1. **PAKE choice**: SPAKE2 (audited via magic-wormhole) vs OPAQUE
    vs a hand-rolled HKDF-of-PIN. Decision in a follow-up ADR
    once the chosen crate has been read.
-2. **Daemon supervision**: leave at "user backgrounds it" for v1?
-   Or ship a `bypass sync daemon --systemd-unit` helper that
-   writes a `.service` file? Probably defer.
+2. **Daemon supervision** — **resolved**: deferred to
+   [Phase 6 (Polish)](ROADMAP.md#phase-6--polish). Sub-milestone
+   5.2.c ships the daemon itself runnable in the foreground;
+   Phase 6 adds the cross-platform service-management glue
+   (systemd user unit on Linux, launchd agent on macOS) with the
+   matching `start`/`stop`/`status`/`enable` UX.
 3. **`.gitattributes` for `.gpg` files** — set `binary` so git
    doesn't try line-ending normalisation across platforms. Should
    be set in `bypass init` by default? Suggested for a tiny

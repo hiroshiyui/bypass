@@ -160,6 +160,10 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [ ] Integration tests covering full CRUD + git flows
 - [ ] CI: build + test on Linux/macOS
 - [ ] Release packaging (cargo-dist or similar)
+- [ ] Sync-daemon service integration (`start` / `stop` / `status` / `enable`):
+  - [ ] Linux: systemd user unit at `~/.config/systemd/user/bypass-sync.service`, managed via `systemctl --user`
+  - [ ] macOS: launchd agent at `~/Library/LaunchAgents/io.bypass.sync.plist`, managed via `launchctl bootstrap`/`bootout`/`kickstart`/`print`
+  - Follows the Phase 5.2 daemon-supervision open question recorded in [`doc/sync-p2p-evaluation.md`](sync-p2p-evaluation.md)
 
 ---
 
