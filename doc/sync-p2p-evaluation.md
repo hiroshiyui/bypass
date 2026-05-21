@@ -2,11 +2,14 @@
 
 # Phase 5.2 — LAN P2P sync: design evaluation
 
-> Status: design doc, no code yet. Locks in the decisions that
-> Milestone 5.2's implementation milestones will build on. See the
-> companion ADRs ([0010](adr/0010-p2p-transport-libp2p.md),
-> [0011](adr/0011-sync-semantics-hybrid.md)) for the canonical
-> record of what was chosen.
+> Status: design doc, no implementation yet. Locks in the decisions
+> Milestone 5.2's sub-milestones will build on. The canonical record
+> of each decision lives in its ADR:
+> [0010 transport](adr/0010-p2p-transport-libp2p.md),
+> [0011 sync semantics](adr/0011-sync-semantics-hybrid.md),
+> [0012 PAKE](adr/0012-pake-spake2.md),
+> [0013 sync test strategy](adr/0013-sync-transport-trait.md).
+> Where this doc and an ADR disagree, the ADR wins.
 
 ## Context
 
@@ -277,11 +280,11 @@ Device B: bypass sync pair --enter
    → PIN is discarded
 ```
 
-Open question: which PAKE? SPAKE2 is mature and widely
-implemented; the `spake2` crate (no_std-friendly, audited for
-magic-wormhole's use) is the obvious candidate. Decision deferred
-to ADR-0011's "open questions" section pending a quick crate
-audit.
+PAKE choice and concrete parameters (PIN format, lifetime,
+rate-limit, pinned-peer file layout) are settled in
+[ADR-0012](adr/0012-pake-spake2.md): SPAKE2 via the `spake2`
+crate; pinned peers live in a single
+`$XDG_CONFIG_HOME/bypass/peers.toml` (not a per-peer directory).
 
 ## Daemon design
 
@@ -290,21 +293,35 @@ sketch:
 
 - New subcommand `bypass sync daemon` (long-running).
 - Holds a libp2p `Swarm`, watches the store directory for changes
-  via `notify` crate.
+  via the `notify` crate.
 - On local change: commit (via existing `Git2Vcs`), then push to
-  paired peers.
+  paired peers. The existing
+  [`Git2Vcs::unfinished_state_name`](../crates/bypass-cli/src/vcs_git2.rs)
+  guard applies — the daemon defers auto-commits while the user
+  is hand-resolving a conflict.
 - On peer push: receive pack, run leak audit on incoming blobs,
   apply per the hybrid policy.
 - Exposes a unix socket for `bypass sync status` to query.
-- Process-management: launched ad-hoc by the user (`bypass sync
-  daemon &`) for v1; systemd-user / launchd unit files come later
-  if the feature proves valuable.
+- Process-management: launched ad-hoc by the user
+  (`bypass sync daemon &`) for v1. Cross-platform
+  service-manager glue (systemd user unit on Linux, launchd agent
+  on macOS) is scheduled for [Phase 6](ROADMAP.md#phase-6--polish).
+
+Several details that the original draft left implicit have been
+pushed into the open-questions section below:
+
+- Socket path on each platform and how to refuse multi-instance
+  (open question 9).
+- What `bypass sync status` actually displays (open question 10).
+- The first-sync bootstrap shape (open question 11).
+- The tie-breaker when both peers diverged with disjoint commits
+  (open question 12).
 
 Daemon code lives in `bypass-cli` for v1. If it grows enough to
-warrant its own crate, the obvious split is `bypass-sync`
-containing the libp2p + daemon + pairing logic, with `bypass-cli`
-depending on it. We can defer that decision until the code is
-sized.
+warrant its own crate, the obvious split is `bypass-sync` —
+deferred until the code is sized
+([ADR-0010](adr/0010-p2p-transport-libp2p.md),
+[ADR-0013](adr/0013-sync-transport-trait.md)).
 
 ## Conflict resolution at the application layer
 
@@ -352,10 +369,68 @@ to be possible for correctness.
 5. **Test strategy** — **resolved** in
    [ADR-0013](adr/0013-sync-transport-trait.md): a request-response
    `Transport` trait with two implementations (`Libp2pTransport`
-   for production, `InProcessTransport` for unit tests). Three
-   test layers: unit (against the fake), small focused libp2p
-   loopback (run by default), and `assert_cmd` two-process
-   daemon tests (`#[ignore]` by default, runnable on demand).
+   for production, `InProcessTransport` for unit tests), both
+   living in `bypass-cli` for v1 (not a separate `bypass-sync`
+   crate). Three test layers: unit (against the fake), small
+   focused libp2p loopback (run by default), and `assert_cmd`
+   two-process daemon tests (`#[ignore]` by default, runnable on
+   demand).
+
+## Open questions surfaced by the first design pass
+
+These weren't in the original five but emerged on closer review.
+None block 5.2.a; each is tagged with the sub-milestone where it
+should be resolved and whether it warrants its own ADR.
+
+6. **Identity-key location, perms, and rotation.** Phase 5.2.a
+   generates a libp2p identity keypair per device. Open: file
+   path under `$XDG_CONFIG_HOME/bypass/`, mode bits (presumably
+   0600 to match `peers.toml`), and whether rotation is
+   supported (and if so, what happens to pinned peers when their
+   counterpart's key rotates). **ADR candidate in 5.2.a
+   planning.**
+
+7. **Peer revocation UX and trust semantics.** "I lost a device,
+   untrust it" needs both a CLI surface (`bypass sync peer rm
+   <name>` or similar) and a decision on whether *prior* commits
+   from the revoked peer remain trusted. The UX is sub-milestone
+   detail; the trust question is **ADR-worthy in 5.2.c planning**.
+
+8. **DoS defences for incoming sync.** The threat model names
+   the risk but the eval doc doesn't commit to concrete numbers:
+   max pack size, max refs per fetch, per-peer sync-rate limit,
+   per-peer disk quota. The *posture* (refuse-by-default with
+   explicit caps) parallels [ADR-0009](adr/0009-leak-check-before-push.md).
+   **ADR candidate in 5.2.b planning.**
+
+9. **Daemon socket location and multi-instance prevention.**
+   `$XDG_RUNTIME_DIR/bypass-sync.sock` is the natural Linux home;
+   macOS has no `XDG_RUNTIME_DIR` and needs a fallback
+   (e.g. `$TMPDIR/bypass-sync.sock`). Multi-instance
+   prevention: bind-or-error on the socket, or a pidfile? **5.2.c
+   planning detail.**
+
+10. **`bypass sync status` output shape.** Connected peers? Most
+    recent sync timestamp per peer? Pending conflicts list? The
+    auto-merge audit trail (ADR-0011's "warn within last N
+    seconds") needs a concrete UI here. **5.2.c planning detail.**
+
+11. **First-sync (bootstrap) protocol.** Two paired devices
+    establish trust via PAKE; the very first git fetch then
+    transfers… what? A full pack? Negotiated `have`/`want`? Is
+    there a disk-budget guard? **5.2.b planning detail.**
+
+12. **Rebase tie-breaker for symmetric divergence.** Both peers
+    diverged with disjoint commits. *Who rebases onto whom?*
+    Without a deterministic tie-breaker (peer-id lexical order;
+    latest-commit-timestamp wins; …) both sides could rebase
+    concurrently and re-diverge. **5.2.b planning detail.**
+
+13. **Battery / background-sync on mobile.** Once Android (Phase
+    8) gets the daemon, always-on TCP listeners drain battery.
+    Likely needs an interval-poll mode or external scheduler
+    integration. Out of scope for Phase 5.2; flagged so Phase 8
+    planning doesn't rediscover it.
 
 ## Next steps
 
