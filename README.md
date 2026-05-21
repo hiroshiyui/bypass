@@ -31,7 +31,7 @@ load-bearing design decisions live in
 
 | Frontend | Status |
 |---|---|
-| Linux CLI (`bypass`) | ✅ Phases 1, 2 & 3 shipped (CRUD + git versioning + generation + clipboard) |
+| Linux CLI (`bypass`) | ✅ Phases 1–4 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions) |
 | Firefox & Chrome extension | 🗓 Planned (Phase 7) |
 | Android app | 🗓 Planned (Phase 8) |
 
@@ -113,6 +113,24 @@ bypass rm github.com/you
 # Inspect history
 bypass log github.com/you      # commits touching this entry
 bypass log                     # full store history
+
+# Multi-line entries: first line is the password, then `key: value` pairs
+echo "hunter2
+login: alice
+url: https://example.com
+otpauth://totp/Example:alice?secret=JBSWY3DPEHPK3PXP&issuer=Example" \
+    | bypass insert -m service
+
+# Show one field
+bypass show service login                 # → alice
+bypass show -c service login              # copy field value to clipboard
+
+# Compute TOTP from the otpauth:// URI in the entry
+bypass otp service
+bypass otp -c service
+
+# Run a pass-style extension
+bypass ext my-extension --some-flag
 ```
 
 Sync is just git — every store is a real git repository, and the
@@ -124,9 +142,9 @@ bypass git push -u origin main
 bypass git log --oneline
 ```
 
-Still to come: structured-field access (`bypass show <path> <field>`),
-TOTP (`bypass otp`), extensions, and the browser / Android frontends —
-see [`doc/ROADMAP.md`](doc/ROADMAP.md).
+Still to come: a `bypass sync` shortcut (Phase 5), and the browser /
+Android frontends (Phases 7 & 8) — see
+[`doc/ROADMAP.md`](doc/ROADMAP.md).
 
 ## Crypto, briefly
 
