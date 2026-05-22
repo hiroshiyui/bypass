@@ -74,6 +74,21 @@ fn dispatch() -> Result<u8> {
         }
         Command::Init { gpg_ids } => {
             let root = StorageFs::resolve_default_root().context("resolve store root")?;
+            // Audit finding F2: ensure the store root is mode 0700 so a
+            // sibling user on a multi-user machine can't list entry
+            // names (which themselves leak which services the user has
+            // accounts on). Create the dir if it doesn't exist first so
+            // the chmod has something to act on.
+            if !root.exists() {
+                std::fs::create_dir_all(&root)
+                    .with_context(|| format!("create store root {}", root.display()))?;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
+                    .with_context(|| format!("chmod 0700 {}", root.display()))?;
+            }
             let mut store = open_store()?;
             let keys: Vec<KeyId> = gpg_ids.into_iter().map(KeyId::new).collect();
             store.init(&keys).map_err(map_store_err)?;

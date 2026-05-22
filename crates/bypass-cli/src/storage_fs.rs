@@ -39,6 +39,13 @@ pub enum StorageFsError {
     #[error("path resolved outside store root: {0}")]
     OutsideRoot(PathBuf),
 
+    /// A path component under the store root is a symbolic link.
+    /// Refused per the audit finding F1 — symlinks can point at
+    /// arbitrary filesystem locations and break the store's
+    /// containment guarantee.
+    #[error("refusing to follow symlink at {0} under store root")]
+    SymlinkInStore(PathBuf),
+
     /// `resolve_default_root` could not find the user's home directory and
     /// `PASSWORD_STORE_DIR` was unset.
     #[error("cannot resolve default store root: $PASSWORD_STORE_DIR unset and no home directory")]
@@ -82,7 +89,36 @@ impl StorageFs {
         if !abs.starts_with(&self.root) {
             return Err(StorageFsError::OutsideRoot(abs));
         }
+        // Audit finding F1: `starts_with` is a component-prefix check
+        // that does not resolve symlinks. Walk the segments of `rel`
+        // and refuse if any existing component under the root is a
+        // symbolic link — a hostile clone that planted, say,
+        // `<root>/email -> /etc` would otherwise let
+        // `read("email/work.gpg")` open `/etc/work.gpg` (or worse,
+        // let `write` create files outside the store).
+        self.reject_symlinks_under_root(rel)?;
         Ok(abs)
+    }
+
+    fn reject_symlinks_under_root(&self, rel: &RelPath) -> Result<(), StorageFsError> {
+        let mut probe = self.root.clone();
+        for segment in rel.segments() {
+            probe.push(segment);
+            match fs::symlink_metadata(&probe) {
+                Ok(meta) if meta.file_type().is_symlink() => {
+                    return Err(StorageFsError::SymlinkInStore(probe));
+                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // No more components exist on disk; nothing
+                    // further to inspect. The not-yet-created
+                    // suffix can't contain a symlink by definition.
+                    return Ok(());
+                }
+                Err(source) => return Err(io_err(probe.clone(), source)),
+            }
+        }
+        Ok(())
     }
 }
 
@@ -303,6 +339,40 @@ mod tests {
         let (td, mut fs) = fresh();
         fs.write(&rp("deeply/nested/dir/file"), b"x").unwrap();
         assert!(td.path().join("deeply/nested/dir/file").is_file());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn read_refuses_when_a_path_component_is_a_symlink() {
+        // Audit finding F1: a `<root>/email -> /etc` symlink, or a
+        // `<root>/.gpg-id -> /etc/passwd` symlink, must be refused
+        // rather than transparently followed.
+        use std::os::unix::fs::symlink;
+        let (td, mut fs) = fresh();
+        fs.write(&rp("good/file"), b"x").unwrap();
+        // Plant a symlink from `<root>/sneaky` to /etc — an attacker
+        // who could write the store root could do this on a clone.
+        symlink("/etc", td.path().join("sneaky")).unwrap();
+        let err = fs.read(&rp("sneaky/passwd")).unwrap_err();
+        assert!(
+            matches!(err, StorageFsError::SymlinkInStore(_)),
+            "expected SymlinkInStore, got {err:?}"
+        );
+        // Sanity: non-symlinked paths still work.
+        assert_eq!(
+            fs.read(&rp("good/file")).unwrap().as_deref(),
+            Some(&b"x"[..])
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn symlink_check_skipped_for_not_yet_created_suffix() {
+        // A write to a path whose parents don't exist yet is fine:
+        // there's nothing to symlink-attack until those parents are
+        // created (and once they are, this very check runs again).
+        let (_td, mut fs) = fresh();
+        fs.write(&rp("brand/new/file"), b"x").unwrap();
     }
 
     #[test]
