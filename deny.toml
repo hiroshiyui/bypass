@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# cargo-deny configuration. Run with `cargo deny check` locally;
+# CI invokes the same command per .github/workflows/ci.yml.
+#
+# Sections we care about:
+#   - [licenses]   — allow-list of accepted licences (everything not
+#                    listed is denied; flag drift the moment a new
+#                    transitive dep introduces something unexpected).
+#   - [advisories] — RUSTSEC checks. We deny by default; the `ignore`
+#                    list names the three currently-known advisories
+#                    that are upstream-blocked. Re-evaluate at each
+#                    libp2p bump.
+#   - [bans]       — duplicate-version warnings (informational; not
+#                    fatal in CI yet).
+
+[graph]
+all-features = true
+
+[licenses]
+# cargo-deny v2 syntax: anything outside `allow` is a hard fail.
+version = 2
+# Confidence threshold for SPDX detection. The default (0.8) handles
+# the lower-quality LICENSE files some crates ship.
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "BSL-1.0",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+    # Our own workspace crates are GPL-3.0-or-later
+    # (ADR-0005).
+    "GPL-3.0-or-later",
+]
+
+[advisories]
+version = 2
+# Three known-but-currently-unblockable advisories. Each entry is
+# tracked in `doc/security-audit.md` (working doc, not in tree) and
+# should be re-checked when libp2p bumps `hickory-proto`.
+ignore = [
+    # hickory-proto NSEC3 closest-encloser proof validation enters an
+    # unbounded loop. No fixed upstream release as of audit date
+    # (2026-05-22). Reachable only when `bypass sync daemon` is running
+    # and accepting LAN multicast — daemon is off-by-default per
+    # ADR-0020.
+    "RUSTSEC-2026-0118",
+    # hickory-proto O(n²) name-compression CPU exhaustion. Fixed
+    # upstream in 0.26.1; libp2p 0.56 still pins 0.25.2.
+    "RUSTSEC-2026-0119",
+    # `paste` is unmaintained. Build-time proc-macro only; no runtime
+    # impact. Reaches us via libp2p's netlink stack.
+    "RUSTSEC-2024-0436",
+]
+
+[bans]
+# Warn (not deny) on duplicate major versions in the tree — libp2p
+# pulls in churn that's hard to flatten without a full upstream
+# coordination. Re-evaluate if a duplicate ever crosses the
+# crypto / network attack surface.
+multiple-versions = "warn"
+# Reject `version = "*"` deps anywhere in the tree. The intra-
+# workspace dep on `bypass-core` is given an explicit `version`
+# alongside the `path =` field so it isn't a wildcard.
+wildcards = "deny"
+
+[sources]
+# All deps must come from crates.io (or other allow-listed registries
+# / git sources). Prevents an accidental `git = "https://malicious"`
+# entry from sneaking in.
+unknown-registry = "deny"
+unknown-git = "deny"

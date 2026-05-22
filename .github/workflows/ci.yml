@@ -53,3 +53,42 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace
+
+  supply-chain:
+    name: cargo deny + cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + bin
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: supply-chain
+
+      # `cargo install` is cached by Swatinem/rust-cache via
+      # ~/.cargo/bin, so subsequent runs are near-instant. First run
+      # on a fresh cache key adds ~90 s.
+      - name: Install cargo-deny + cargo-audit
+        run: |
+          cargo install --locked cargo-deny
+          cargo install --locked cargo-audit
+
+      # Checks: licences, advisories, bans, sources — driven by
+      # deny.toml at the repo root.
+      - name: cargo deny check
+        run: cargo deny check
+
+      # cargo-audit's advisory DB sometimes ships fresh findings
+      # ahead of cargo-deny's. Run it separately for the extra
+      # signal. The three IDs below are the same set deny.toml
+      # ignores (see doc/security-audit.md for rationale);
+      # re-evaluate at each libp2p bump.
+      - name: cargo audit
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2026-0118 \
+            --ignore RUSTSEC-2026-0119 \
+            --ignore RUSTSEC-2024-0436

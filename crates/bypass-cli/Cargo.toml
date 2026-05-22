@@ -11,7 +11,7 @@ name = "bypass"
 path = "src/main.rs"
 
 [dependencies]
-bypass-core = { path = "../bypass-core" }
+bypass-core = { path = "../bypass-core", version = "0.1.0" }
 anyhow = "1"
 arboard = "3"
 clap = { version = "4", features = ["derive"] }
