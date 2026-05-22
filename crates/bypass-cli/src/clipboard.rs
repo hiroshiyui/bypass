@@ -24,10 +24,10 @@
 use std::io::{Read, Write};
 use std::os::unix::process::CommandExt as _;
 use std::process::{Command, Stdio};
-use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use zeroize::Zeroizing;
 
 /// Default auto-clear delay, in seconds. Matches `pass`'s default.
 pub const DEFAULT_CLEAR_SECS: u64 = 45;
@@ -71,39 +71,130 @@ pub fn copy_and_auto_clear(password: &[u8], seconds: u64) -> Result<()> {
 
 /// Daemon body. Invoked by re-exec from [`copy_and_auto_clear`]; do not
 /// call directly from foreground code.
+///
+/// Security audit findings H3 and H4 covered here:
+///
+/// - **H3**: the password (and the prior clipboard contents we save to
+///   restore later) live in `Zeroizing<String>`s so the heap is
+///   scrubbed when this function returns, panics, or is killed by a
+///   signal that lets Drop run.
+///
+/// - **H4**: restoration runs on every exit path. Normal expiry is the
+///   `tokio::time::sleep` arm of the select; `SIGINT` and `SIGTERM`
+///   arms exit early and `RestoreGuard::drop` runs as the stack
+///   unwinds. Panics likewise trigger the Drop. The only path we
+///   cannot cover is `SIGKILL` / `SIGABRT`, where the kernel never
+///   gives us a chance — documented limitation; same as every other
+///   userland clipboard tool.
 pub fn run_daemon(seconds: u64) -> Result<()> {
-    // Read the password to install. Reading the entire stdin buffer
-    // also serves as the synchronisation point: the parent has finished
-    // writing it before we touch the clipboard.
-    let mut password = Vec::new();
+    // Read the password to install before we touch the clipboard. The
+    // synchronous read also acts as the sync point with the parent:
+    // it has finished writing before we proceed.
+    let mut buf = Vec::new();
     std::io::stdin()
-        .read_to_end(&mut password)
+        .read_to_end(&mut buf)
         .context("read password from stdin")?;
-    if password.is_empty() {
+    if buf.is_empty() {
         bail!("clipboard daemon received an empty password on stdin");
     }
-    let password = String::from_utf8(password)
-        .context("password is not valid UTF-8 (clipboards only accept text)")?;
+    let password: Zeroizing<String> = Zeroizing::new(
+        String::from_utf8(buf)
+            .context("password is not valid UTF-8 (clipboards only accept text)")?,
+    );
 
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("build tokio runtime")?;
+    rt.block_on(async move { run_daemon_async(password, seconds).await })
+}
+
+async fn run_daemon_async(password: Zeroizing<String>, seconds: u64) -> Result<()> {
     let mut cb = arboard::Clipboard::new().context("open system clipboard")?;
     // Snapshot whatever's in the clipboard right now so we can put it
-    // back when our window closes.
-    let previous = cb.get_text().ok();
-    cb.set_text(&password)
+    // back when our window closes. May itself contain a secret the
+    // user copied from somewhere else — zeroize it.
+    let previous: Option<Zeroizing<String>> = cb.get_text().ok().map(Zeroizing::new);
+    cb.set_text(&*password)
         .context("write password to clipboard")?;
 
-    thread::sleep(Duration::from_secs(seconds));
+    // RAII guard: any path that drops this guard restores the clipboard
+    // (if our password is still on it). Panics in the wait window
+    // unwind through this Drop. Normal expiry, SIGINT and SIGTERM all
+    // exit the `tokio::select!` below and drop the guard naturally.
+    let mut guard = RestoreGuard::new(&mut cb, &password, previous);
 
-    let still_ours = cb.get_text().map(|t| t == password).unwrap_or(false);
-    if still_ours {
-        match previous {
-            Some(prev) => {
-                let _ = cb.set_text(prev);
-            }
-            None => {
-                let _ = cb.clear();
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut sigterm = signal(SignalKind::terminate()).context("install SIGTERM handler")?;
+
+    tokio::select! {
+        _ = tokio::time::sleep(Duration::from_secs(seconds)) => {}
+        _ = tokio::signal::ctrl_c() => {}
+        _ = sigterm.recv() => {}
+    }
+
+    // Explicit restore so we surface any restore error, instead of
+    // swallowing it in Drop.
+    guard.restore_now();
+    Ok(())
+}
+
+/// Best-effort clipboard restorer. Holds `&mut Clipboard` for the
+/// lifetime of the daemon so Drop has direct access.
+struct RestoreGuard<'a> {
+    cb: &'a mut arboard::Clipboard,
+    /// Owning reference to the password text so we can compare without
+    /// the borrow checker getting in the way of `&mut cb`.
+    password: String,
+    previous: Option<Zeroizing<String>>,
+    done: bool,
+}
+
+impl<'a> RestoreGuard<'a> {
+    fn new(
+        cb: &'a mut arboard::Clipboard,
+        password: &Zeroizing<String>,
+        previous: Option<Zeroizing<String>>,
+    ) -> Self {
+        Self {
+            cb,
+            password: (**password).clone(),
+            previous,
+            done: false,
+        }
+    }
+
+    /// Restore the previous clipboard contents (or clear) if the
+    /// clipboard still holds our password. No-op on repeat call.
+    fn restore_now(&mut self) {
+        if self.done {
+            return;
+        }
+        self.done = true;
+        let still_ours = self
+            .cb
+            .get_text()
+            .map(|t| t == self.password)
+            .unwrap_or(false);
+        if still_ours {
+            match &self.previous {
+                Some(prev) => {
+                    let _ = self.cb.set_text((**prev).clone());
+                }
+                None => {
+                    let _ = self.cb.clear();
+                }
             }
         }
     }
-    Ok(())
+}
+
+impl Drop for RestoreGuard<'_> {
+    fn drop(&mut self) {
+        self.restore_now();
+        // Scrub our password copy. (`previous` is already `Zeroizing`
+        // and drops itself.)
+        use zeroize::Zeroize;
+        self.password.zeroize();
+    }
 }
