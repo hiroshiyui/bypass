@@ -2,14 +2,48 @@
 
 # Phase 5.2 — LAN P2P sync: design evaluation
 
-> Status: design doc, no implementation yet. Locks in the decisions
-> Milestone 5.2's sub-milestones will build on. The canonical record
-> of each decision lives in its ADR:
+> **Status: shipped (Phase 5.2 + Phase 6 service-supervision glue).**
+> Originally a forward-looking design doc; preserved as the historical
+> record of *why* each load-bearing decision was made. Every concrete
+> decision lives in an ADR; where this doc and an ADR disagree, the
+> ADR wins. Implementation specifics may have evolved past what this
+> doc sketches — read the linked ADRs and `crates/bypass-cli/src/sync/`
+> for current truth.
+>
+> ADRs in scope:
 > [0010 transport](adr/0010-p2p-transport-libp2p.md),
 > [0011 sync semantics](adr/0011-sync-semantics-hybrid.md),
 > [0012 PAKE](adr/0012-pake-spake2.md),
-> [0013 sync test strategy](adr/0013-sync-transport-trait.md).
-> Where this doc and an ADR disagree, the ADR wins.
+> [0013 test strategy](adr/0013-sync-transport-trait.md),
+> [0014 metadata & ordering](adr/0014-sync-metadata-and-ordering.md),
+> [0015 identity key](adr/0015-device-identity-key.md),
+> [0016 DoS defences](adr/0016-sync-dos-defences.md),
+> [0017 daemon socket](adr/0017-daemon-socket-location.md),
+> [0018 status protocol](adr/0018-daemon-status-protocol.md),
+> [0019 peer revocation](adr/0019-peer-revocation-trust-semantics.md),
+> [0020 service supervision](adr/0020-daemon-service-supervision.md).
+
+## What shipped
+
+The four sub-milestones called out in this doc all landed; ROADMAP
+Phase 5.2 is fully ticked.
+
+| Sub-milestone | Surface |
+| --- | --- |
+| **5.2.a — pairing in isolation** | SPAKE2 PAKE-from-PIN handshake, identity keypair, `peers.toml` pinning, `Transport` trait + `InProcessTransport` fake, `bypass sync identity rotate` |
+| **5.2.b.i — real network** | `Libp2pTransport` + `bypass sync pair --show` / `--enter` end-to-end over libp2p (TCP + Noise + request-response + mDNS) |
+| **5.2.b.ii — sync core** | `WantPackFrom` RPC, git pack build/ingest, custom merge driver `bypass-take-theirs`, auto-rebase with peer-ID tie-breaker, leak-audit on receive |
+| **5.2.b.iii — hardening** | 50 MB pack-size cap, 3 / 60 s per-peer rate limit, two-process loopback integration test |
+| **5.2.c — daemon** | `bypass sync daemon` (foreground), `notify`-driven fs watcher, `bypass sync status`, `bypass sync peer rm`, mDNS discovery → auto-dial |
+| **5.2.d — two-peer & docs** | mDNS-driven insert→show round-trip integration test (`#[ignore]` by default; self-skips when host lacks IPv4 multicast routes), full README rewrite |
+| **Phase 6 service-supervision** (was Phase 5.2.c open question #2) | systemd user unit + launchd agent + `bypass sync daemon install/uninstall/start/stop/enable/disable/status` |
+
+A separate [security audit](security-audit.md) (working doc, not
+committed) was performed against the post-Phase-6 tip and its
+findings remediated across `723c92b`..`571ffba`. None of the
+findings invalidated a Phase 5.2 design decision; the only
+sync-layer-adjacent change was `S2`, which dropped the systemd
+unit's default `RUST_LOG` from `info` to `warn`.
 
 ## Context
 
@@ -89,19 +123,23 @@ What a hostile party could learn from the sync layer:
   the sync layer; the store itself is encrypted at rest by
   OpenPGP).
 
-The implications, in order of importance:
+The implications, in order of importance (each is now an
+implementation-backed posture, not a forward-looking requirement):
 
-1. **Transport must be encrypted and authenticated.** Anything
-   less leaks at least metadata (and arguably the structure of the
-   store, which is itself sensitive).
-2. **Pairing must verify out-of-band.** No "trust on first sight"
-   for new peers — the user has to confirm.
-3. **The pre-push audit (ADR-0009) applies symmetrically.** A
-   misbehaving peer can't make us *receive* something we wouldn't
-   push: incoming blobs go through the same allowlist + header
-   sniff before being committed locally.
-4. **Rate-limit / size-cap incoming traffic.** Even authenticated
-   peers shouldn't be able to fill the disk by accident.
+1. **Transport must be encrypted and authenticated.** Shipped via
+   libp2p's Noise XX handshake + Ed25519 identity keys
+   ([ADR-0010](adr/0010-p2p-transport-libp2p.md),
+   [ADR-0015](adr/0015-device-identity-key.md)).
+2. **Pairing must verify out-of-band.** Shipped via SPAKE2
+   PAKE-from-PIN: the user reads the PIN off one device and types
+   it on the other ([ADR-0012](adr/0012-pake-spake2.md)).
+3. **The pre-push audit (ADR-0009) applies symmetrically.** Shipped
+   as part of 5.2.b.ii: incoming packs are walked by
+   `sync::syncing::audit_incoming` before HEAD advances; any
+   non-OpenPGP blob refuses the rebase.
+4. **Rate-limit / size-cap incoming traffic.** Shipped via
+   [ADR-0016](adr/0016-sync-dos-defences.md): 50 MB pack cap
+   (symmetric), 3-attempt / 60-second per-peer rate-limit window.
 
 ## Transport options
 
@@ -286,42 +324,45 @@ rate-limit, pinned-peer file layout) are settled in
 crate; pinned peers live in a single
 `$XDG_CONFIG_HOME/bypass/peers.toml` (not a per-peer directory).
 
-## Daemon design
+## Daemon design (shipped — 5.2.c + Phase 6)
 
-The roadmap mentions "daemon mode + `bypass sync status`". The
-sketch:
+Shipped surface (see
+[`crates/bypass-cli/src/sync/daemon.rs`](../crates/bypass-cli/src/sync/daemon.rs)
+and [ADR-0017](adr/0017-daemon-socket-location.md),
+[ADR-0018](adr/0018-daemon-status-protocol.md),
+[ADR-0020](adr/0020-daemon-service-supervision.md)):
 
-- New subcommand `bypass sync daemon` (long-running).
-- Holds a libp2p `Swarm`, watches the store directory for changes
-  via the `notify` crate.
-- On local change: commit (via existing `Git2Vcs`), then push to
-  paired peers. The existing
-  [`Git2Vcs::unfinished_state_name`](../crates/bypass-cli/src/vcs_git2.rs)
-  guard applies — the daemon defers auto-commits while the user
-  is hand-resolving a conflict.
-- On peer push: receive pack, run leak audit on incoming blobs,
-  apply per the hybrid policy.
-- Exposes a unix socket for `bypass sync status` to query.
-- Process-management: launched ad-hoc by the user
-  (`bypass sync daemon &`) for v1. Cross-platform
-  service-manager glue (systemd user unit on Linux, launchd agent
-  on macOS) is scheduled for [Phase 6](ROADMAP.md#phase-6--polish).
+- `bypass sync daemon` is the long-running foreground process.
+  Phase 6's `install` / `start` / `enable` / etc. subcommands
+  manage it via systemd (Linux) or launchd (macOS).
+- Holds the libp2p `Swarm` with mDNS enabled via
+  [`Libp2pTransport`](../crates/bypass-cli/src/sync/libp2p_transport.rs).
+  Watches the store directory through
+  [`sync::watcher`](../crates/bypass-cli/src/sync/watcher.rs)
+  (`notify` crate, 500 ms debounce, filters `.git/` to avoid
+  feedback loops).
+- On local change: triggers a sync round to every paired peer it
+  has a known multiaddr for (mDNS-supplied). Refuses while the
+  repo is mid-merge per
+  [`Git2Vcs::unfinished_state_name`](../crates/bypass-cli/src/vcs_git2.rs).
+- On peer push: rate-limit check
+  ([ADR-0016](adr/0016-sync-dos-defences.md)) → pinning check
+  against `peers.toml` (hot-reloaded on mtime change) → serve via
+  [`sync::syncing::serve`](../crates/bypass-cli/src/sync/syncing.rs),
+  which leak-audits the newly-introduced commits and either
+  fast-forwards or rebases per the hybrid policy.
+- Status socket at `$XDG_RUNTIME_DIR/bypass-sync.sock` (mode 0600)
+  speaks newline-delimited JSON; `bypass sync status` is the
+  client. `bypass sync daemon status` is the *supervisor* view —
+  see [ADR-0020](adr/0020-daemon-service-supervision.md) for the
+  distinction.
+- SIGTERM / SIGINT shut the loop down cleanly; the daemon is
+  off-by-default per ADR-0020 (user runs `enable` to autostart).
 
-Several details that the original draft left implicit have been
-pushed into the open-questions section below:
-
-- Socket path on each platform and how to refuse multi-instance
-  (open question 9).
-- What `bypass sync status` actually displays (open question 10).
-- The first-sync bootstrap shape (open question 11).
-- The tie-breaker when both peers diverged with disjoint commits
-  (open question 12).
-
-Daemon code lives in `bypass-cli` for v1. If it grows enough to
-warrant its own crate, the obvious split is `bypass-sync` —
-deferred until the code is sized
-([ADR-0010](adr/0010-p2p-transport-libp2p.md),
-[ADR-0013](adr/0013-sync-transport-trait.md)).
+The "is the code big enough to warrant its own `bypass-sync` crate"
+question is still open in the abstract but the current ~1500 lines
+under `crates/bypass-cli/src/sync/` haven't crossed any
+maintainability threshold; deferred indefinitely.
 
 ## Conflict resolution at the application layer
 
@@ -331,17 +372,32 @@ conflicting), the user runs `bypass edit <entry>` to hand-merge,
 then re-runs sync. The hybrid policy makes this rare but it has
 to be possible for correctness.
 
-## Summary of recommendations (locked in via ADRs)
+## Summary of decisions (all shipped, locked in via ADRs)
 
 | Question | Decision | ADR |
 | --- | --- | --- |
-| Transport | libp2p (mDNS + Noise + request-response) | [0010](adr/0010-p2p-transport-libp2p.md) |
-| Sync semantics | Hybrid: git pack on the wire, auto-rebase-on-divergence, manual fallback | [0011](adr/0011-sync-semantics-hybrid.md) |
-| Pairing | PAKE-from-PIN, one-shot bootstrap, then pin peer IDs | covered in ADR-0010 |
-| Daemon location | `bypass-cli` for v1; consider `bypass-sync` split later | covered in ADR-0010 |
-| Scope | LAN only; 2–5 devices; eventual consistency | this doc |
+| Transport | libp2p (mDNS + Noise + request-response, narrow feature set) | [0010](adr/0010-p2p-transport-libp2p.md) |
+| Sync semantics | Hybrid: git pack on the wire, auto-rebase-on-divergence, `bypass-take-theirs` merge driver, manual fallback | [0011](adr/0011-sync-semantics-hybrid.md) |
+| Pairing | PAKE-from-PIN (SPAKE2), 6-digit single-use PIN, 5-min timeout; peer-IDs pinned in `peers.toml` | [0012](adr/0012-pake-spake2.md) |
+| Test strategy | `Transport` trait + `InProcessTransport`; loopback + two-process integration tiers | [0013](adr/0013-sync-transport-trait.md) |
+| Metadata / ordering | Git commit fields only; peer-ID lexical tie-breaker; no per-entry metadata | [0014](adr/0014-sync-metadata-and-ordering.md) |
+| Identity key | Ed25519 at `$XDG_CONFIG_HOME/bypass/identity.key`, 0600, libp2p protobuf | [0015](adr/0015-device-identity-key.md) |
+| DoS defences | 50 MB pack cap (symmetric); 3 / 60 s per-peer rate limit | [0016](adr/0016-sync-dos-defences.md) |
+| Daemon socket | `$XDG_RUNTIME_DIR/bypass-sync.sock` with macOS fallback chain; probe-then-bind | [0017](adr/0017-daemon-socket-location.md) |
+| Status protocol | Newline-delimited JSON; one `status` op; forward-extensible | [0018](adr/0018-daemon-status-protocol.md) |
+| Peer revocation | `bypass sync peer rm --yes`; history is final | [0019](adr/0019-peer-revocation-trust-semantics.md) |
+| Service supervision | systemd user unit (Linux) + launchd user agent (macOS); off by default | [0020](adr/0020-daemon-service-supervision.md) |
+| Daemon location | `bypass-cli` for v1; `bypass-sync` split deferred indefinitely | covered in [0010](adr/0010-p2p-transport-libp2p.md) / [0013](adr/0013-sync-transport-trait.md) |
+| Scope | LAN only; 2–5 devices; eventual consistency in seconds | this doc |
 
-## Open questions to resolve before implementation
+## Questions resolved before / during implementation
+
+Historical record of the design-time open questions. All listed
+here closed out in the ADRs cited inline; preserved with the
+original numbering so older commit messages and PR threads stay
+navigable.
+
+### Original five (raised in the design pass)
 
 1. **PAKE choice** — **resolved** in
    [ADR-0012](adr/0012-pake-spake2.md): SPAKE2 via the `spake2`
@@ -380,11 +436,12 @@ to be possible for correctness.
    two-process daemon tests (`#[ignore]` by default, runnable on
    demand).
 
-## Open questions surfaced by the first design pass
+### Surfaced on closer review
 
-These weren't in the original five but emerged on closer review.
-None block 5.2.a; each is tagged with the sub-milestone where it
-should be resolved and whether it warrants its own ADR.
+Items 6–14 weren't in the original five but emerged when
+sub-milestone planning got serious. Items 6–12 closed out via
+ADRs as 5.2.a–5.2.c shipped; 13 and 14 are intentionally deferred
+(mobile / signed-commit work has its own future planning surface).
 
 6. **Identity-key location, perms, and rotation** — **resolved**
    in [ADR-0015](adr/0015-device-identity-key.md): Ed25519
@@ -461,17 +518,29 @@ should be resolved and whether it warrants its own ADR.
     `bypass sync status` attribution is best-effort, not
     cryptographically authenticated. **Future ADR (post-5.2).**
 
-## Next steps
+## Where things landed
 
-1. Land this doc + ADR-0010 + ADR-0011.
-2. Plan **5.2.a (pairing)**: PAKE crate audit, ADR for PAKE choice,
-   implement `bypass sync pair --show` / `--enter`, store paired
-   peer IDs and Noise static keys under `~/.config/bypass/peers/`.
-3. Plan **5.2.b (sync core)**: in-process two-peer test harness,
-   git-pack-over-libp2p, auto-rebase policy.
-4. Plan **5.2.c (daemon)**: filesystem watcher, `sync status`
-   socket, lifecycle commands.
-5. Plan **5.2.d (polish)**: integration tests with a real libp2p
-   loopback pair, README rewrite, ROADMAP ticks.
+All five "next steps" from the original draft shipped; see the
+[What shipped](#what-shipped) table at the top for the per-
+sub-milestone breakdown. Each got its own planning session and a
+corresponding ROADMAP checkbox under
+[Milestone 5.2](ROADMAP.md#milestone-52-lan-p2p-sync-stretch).
 
-Each sub-milestone gets its own planning session.
+Tracking items that this doc raised but that intentionally do not
+ship with Phase 5.2:
+
+- **Mobile background-sync battery story** (open question #13) —
+  defers to Phase 8 (Android). Documented so Phase 8 planning
+  doesn't rediscover it.
+- **Cryptographic per-commit attribution / signed commits** (open
+  question #14) — explicitly deferred by
+  [ADR-0014](adr/0014-sync-metadata-and-ordering.md). Future ADR
+  warranted post-5.2 once we have implementation experience to
+  weigh the complexity against.
+- **WAN sync / NAT traversal / DERP relays** — Non-goal for v1
+  per the [Non-goals](#non-goals) list. Future ADR if real users
+  ask.
+- **cargo-dist for release packaging** — out of scope here but
+  worth flagging: [ADR-0021](adr/0021-release-packaging.md)
+  deliberately picked a hand-rolled workflow for v0.1.x and
+  re-evaluates after the first real release.
