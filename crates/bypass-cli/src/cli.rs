@@ -251,6 +251,42 @@ pub enum SyncCmd {
         #[command(subcommand)]
         action: SyncIdentityCmd,
     },
+
+    /// Run the foreground sync daemon: holds the libp2p Swarm,
+    /// watches the store for changes, serves paired peers, and
+    /// answers `bypass sync status` queries. Phase 5.2.c.
+    Daemon,
+
+    /// Print a snapshot of the running daemon's view: local peer
+    /// id, listening multiaddrs, paired peers and their last
+    /// sync action.
+    Status {
+        /// Emit the raw JSON reply instead of the human table.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Manage paired peers.
+    Peer {
+        #[command(subcommand)]
+        action: SyncPeerCmd,
+    },
+}
+
+/// Sub-actions under `bypass sync peer`.
+#[derive(Debug, Subcommand)]
+pub enum SyncPeerCmd {
+    /// Revoke a paired peer by friendly name. See
+    /// [ADR-0019](../../doc/adr/0019-peer-revocation-trust-semantics.md):
+    /// future syncs with this peer are refused, but prior commits
+    /// in your git history are not rewritten.
+    Rm {
+        /// The friendly name from pairing.
+        name: String,
+        /// Acknowledge that revocation does not rewrite history.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

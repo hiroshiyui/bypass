@@ -26,12 +26,15 @@
 //! exercised over `InProcessTransport` in unit tests, with no real
 //! networking yet.
 
+pub mod daemon;
 pub mod identity;
 pub mod libp2p_transport;
 pub mod merge_driver;
 pub mod pairing;
 pub mod peers;
 pub mod ratelimit;
+pub mod socket;
 pub mod syncing;
 pub mod transport;
+pub mod watcher;
 pub mod wire;

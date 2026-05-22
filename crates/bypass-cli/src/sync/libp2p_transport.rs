@@ -89,6 +89,16 @@ enum Cmd {
     Shutdown,
 }
 
+/// mDNS discovery event surfaced to the daemon. The Swarm task fans
+/// these out on a separate mpsc so `Transport::next_request` (which
+/// blocks on inbound RPCs) and "I saw a peer on the LAN" notifications
+/// don't queue behind each other.
+#[derive(Debug, Clone)]
+pub enum DiscoveryEvent {
+    Discovered { peer: PeerId, addr: Multiaddr },
+    Expired { peer: PeerId, addr: Multiaddr },
+}
+
 /// Real-network `Transport` impl. Each instance owns one libp2p Swarm
 /// via a background tokio task.
 pub struct Libp2pTransport {
@@ -96,6 +106,7 @@ pub struct Libp2pTransport {
     cmd_tx: mpsc::UnboundedSender<Cmd>,
     inbound_rx: Mutex<mpsc::UnboundedReceiver<(PeerId, Vec<u8>, u64)>>,
     listen_addrs: Arc<StdMutex<Vec<Multiaddr>>>,
+    discoveries_rx: Mutex<mpsc::UnboundedReceiver<DiscoveryEvent>>,
 }
 
 impl Libp2pTransport {
@@ -162,17 +173,32 @@ impl Libp2pTransport {
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
+        let (discoveries_tx, discoveries_rx) = mpsc::unbounded_channel();
         let listen_addrs = Arc::new(StdMutex::new(Vec::<Multiaddr>::new()));
         let listen_addrs_for_task = Arc::clone(&listen_addrs);
 
-        tokio::spawn(run_swarm(swarm, cmd_rx, inbound_tx, listen_addrs_for_task));
+        tokio::spawn(run_swarm(
+            swarm,
+            cmd_rx,
+            inbound_tx,
+            discoveries_tx,
+            listen_addrs_for_task,
+        ));
 
         Ok(Self {
             local_peer_id,
             cmd_tx,
             inbound_rx: Mutex::new(inbound_rx),
             listen_addrs,
+            discoveries_rx: Mutex::new(discoveries_rx),
         })
+    }
+
+    /// Pull the next mDNS discovery / expiry event. Returns `None`
+    /// when the Swarm task has shut down.
+    pub async fn next_discovery(&self) -> Option<DiscoveryEvent> {
+        let mut rx = self.discoveries_rx.lock().await;
+        rx.recv().await
     }
 
     pub fn local_peer_id(&self) -> PeerId {
@@ -246,6 +272,7 @@ async fn run_swarm(
     mut swarm: Swarm<Behaviour>,
     mut cmd_rx: mpsc::UnboundedReceiver<Cmd>,
     inbound_tx: mpsc::UnboundedSender<(PeerId, Vec<u8>, u64)>,
+    discoveries_tx: mpsc::UnboundedSender<DiscoveryEvent>,
     listen_addrs: Arc<StdMutex<Vec<Multiaddr>>>,
 ) {
     let mut pending_outbound: HashMap<
@@ -264,6 +291,7 @@ async fn run_swarm(
                     &mut pending_inbound,
                     &mut next_inbound_id,
                     &inbound_tx,
+                    &discoveries_tx,
                     &listen_addrs,
                 );
             }
@@ -309,6 +337,7 @@ fn handle_swarm_event(
     pending_inbound: &mut HashMap<u64, ResponseChannel<Vec<u8>>>,
     next_inbound_id: &mut u64,
     inbound_tx: &mpsc::UnboundedSender<(PeerId, Vec<u8>, u64)>,
+    discoveries_tx: &mpsc::UnboundedSender<DiscoveryEvent>,
     listen_addrs: &Arc<StdMutex<Vec<Multiaddr>>>,
 ) {
     match event {
@@ -368,11 +397,22 @@ fn handle_swarm_event(
             }
             request_response::Event::ResponseSent { .. } => {}
         },
-        SwarmEvent::Behaviour(BehaviourEvent::Mdns(_)) => {
-            // 5.2.b.i deliberately ignores mDNS events; 5.2.c daemon
-            // will use these to auto-connect to paired peers
-            // discovered on the LAN. Until then mDNS is just a
-            // listening beacon that doesn't drive any action.
+        SwarmEvent::Behaviour(BehaviourEvent::Mdns(ev)) => {
+            // 5.2.c daemon uses these to auto-connect to paired peers
+            // discovered on the LAN. We fan out every discovered /
+            // expired tuple; the daemon filters by `peers.toml`.
+            match ev {
+                mdns::Event::Discovered(list) => {
+                    for (peer, addr) in list {
+                        let _ = discoveries_tx.send(DiscoveryEvent::Discovered { peer, addr });
+                    }
+                }
+                mdns::Event::Expired(list) => {
+                    for (peer, addr) in list {
+                        let _ = discoveries_tx.send(DiscoveryEvent::Expired { peer, addr });
+                    }
+                }
+            }
         }
         SwarmEvent::Behaviour(BehaviourEvent::Identify(_)) => {}
         _ => {}

@@ -263,6 +263,11 @@ fn dispatch() -> Result<u8> {
                 name,
                 addr,
             }) => sync_pair(show, enter, name, addr),
+            Some(cli::SyncCmd::Daemon) => sync_daemon(),
+            Some(cli::SyncCmd::Status { json }) => sync_status(json),
+            Some(cli::SyncCmd::Peer {
+                action: cli::SyncPeerCmd::Rm { name, yes },
+            }) => sync_peer_rm(&name, yes),
         },
         Command::Audit => audit_cmd(),
         Command::Git { args } => {
@@ -618,6 +623,140 @@ fn persist_paired(paired: sync::pairing::PairedPeer) -> Result<u8> {
         "paired with {} ({})",
         paired.remote.name, paired.remote.peer_id
     );
+    Ok(0)
+}
+
+fn sync_daemon() -> Result<u8> {
+    let root = StorageFs::resolve_default_root().context("resolve store root")?;
+    let identity_path = sync::identity::default_path()?;
+    let kp = sync::identity::load_or_generate(&identity_path)?;
+    let peers_path = sync::peers::Peers::default_path()?;
+    let peers = sync::peers::Peers::load(&peers_path)?;
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("build tokio runtime")?;
+    rt.block_on(async move {
+        let listen: libp2p::Multiaddr = "/ip4/0.0.0.0/tcp/0".parse().expect("hard-coded multiaddr");
+        let transport = sync::libp2p_transport::Libp2pTransport::new(
+            kp.clone(),
+            vec![listen],
+            /* with_mdns = */ true,
+        )
+        .await?;
+        // Wait briefly for the listen addr to land so the first
+        // status snapshot is informative.
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if !transport.listen_addrs().is_empty() {
+                break;
+            }
+        }
+
+        let watcher = sync::watcher::watch(&root)?;
+
+        let sock_path = sync::socket::default_socket_path()?;
+        let listener = sync::socket::bind_or_refuse_existing(&sock_path).await?;
+        eprintln!("bypass-sync: status socket at {}", sock_path.display());
+
+        let result = sync::daemon::run(root, transport, peers, peers_path, watcher, listener).await;
+
+        // Best-effort socket cleanup on graceful shutdown.
+        let _ = std::fs::remove_file(&sock_path);
+        result
+    })?;
+    Ok(0)
+}
+
+fn sync_status(json: bool) -> Result<u8> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("build tokio runtime")?;
+    rt.block_on(async {
+        let path = sync::socket::default_socket_path()?;
+        let snap = sync::socket::query_status(&path).await?;
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string(&snap).context("encode status as JSON")?
+            );
+        } else {
+            print_status_table(&snap);
+        }
+        Ok(0)
+    })
+}
+
+fn print_status_table(snap: &sync::socket::StatusSnapshot) {
+    println!("Daemon:    {}", snap.local_peer_id);
+    if snap.listening_addrs.is_empty() {
+        println!("Listening: (none yet)");
+    } else {
+        println!("Listening: {}", snap.listening_addrs.join(", "));
+    }
+    if snap.peers.is_empty() {
+        println!("Peers:     (none paired)");
+        return;
+    }
+    println!("Peers:");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    for p in &snap.peers {
+        let last = match (&p.last_sync_action, p.last_sync_unix) {
+            (Some(action), Some(t)) => format!("{action} ({} ago)", format_relative(now, t)),
+            _ => "(never)".to_owned(),
+        };
+        let disc = if p.discovered { "yes" } else { "no" };
+        println!(
+            "  {:<12} {:<52}  discovered={disc:<4}  last={last}",
+            p.name, p.peer_id
+        );
+    }
+}
+
+fn format_relative(now: u64, then: u64) -> String {
+    let secs = now.saturating_sub(then);
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else if secs < 86_400 {
+        format!("{}h", secs / 3600)
+    } else {
+        format!("{}d", secs / 86_400)
+    }
+}
+
+fn sync_peer_rm(name: &str, yes: bool) -> Result<u8> {
+    let peers_path = sync::peers::Peers::default_path()?;
+    let mut peers = sync::peers::Peers::load(&peers_path)?;
+    let Some(record) = peers.find_by_name(name).cloned() else {
+        bail!("no such peer: {name:?}");
+    };
+    let warning = format!(
+        "Removing pinning for {name:?} ({pid}).\n\
+         Future syncs with this peer will be refused.\n\n\
+         Note: prior commits authored by this peer remain in your\n\
+         git history. `bypass` does not sign commits per ADR-0014, so\n\
+         we cannot reliably distinguish them after the fact. If you\n\
+         need a clean history, re-clone from a trusted source or use\n\
+         `git filter-repo` to rewrite.",
+        pid = record.peer_id
+    );
+    if !yes {
+        eprintln!("{warning}\n\nRe-run with --yes to confirm.");
+        return Ok(2);
+    }
+    let removed = peers
+        .remove(name)
+        .expect("find_by_name said it exists; remove must succeed");
+    peers.save(&peers_path)?;
+    eprintln!("{warning}");
+    eprintln!("\nremoved {} ({})", removed.name, removed.peer_id);
     Ok(0)
 }
 
