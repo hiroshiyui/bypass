@@ -93,6 +93,58 @@ jobs:
             --ignore RUSTSEC-2026-0119 \
             --ignore RUSTSEC-2024-0436
 
+  android-ffi:
+    name: bypass-ffi cross-compile (Android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain + Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Cache cargo + cargo-ndk
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: android-ffi
+          workspaces: . -> target
+
+      # `cargo-ndk` is the canonical Rust ↔ Android NDK driver.
+      # Cached in ~/.cargo/bin alongside the toolchain.
+      - name: Install cargo-ndk
+        run: cargo install --locked cargo-ndk
+
+      # ubuntu-latest ships the NDK; we just need to point
+      # cargo-ndk at it. `latest` resolves under
+      # /usr/local/lib/android/sdk/ndk/ to the highest stable
+      # version the runner has.
+      - name: Locate the Android NDK
+        run: |
+          NDK_PARENT="$ANDROID_SDK_ROOT/ndk"
+          if [ ! -d "$NDK_PARENT" ]; then
+            NDK_PARENT="/usr/local/lib/android/sdk/ndk"
+          fi
+          NDK_HOME="$(ls -1 "$NDK_PARENT" | sort -V | tail -1)"
+          echo "ANDROID_NDK_HOME=$NDK_PARENT/$NDK_HOME" >> "$GITHUB_ENV"
+          echo "Using NDK at $NDK_PARENT/$NDK_HOME"
+
+      - name: Cross-compile bypass-ffi (arm64 + armv7)
+        run: |
+          cargo ndk \
+            -t arm64-v8a \
+            -t armeabi-v7a \
+            build --release -p bypass-ffi
+
+      - name: Upload .so artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bypass-ffi-android
+          path: |
+            target/aarch64-linux-android/release/libbypass.so
+            target/armv7-linux-androideabi/release/libbypass.so
+          if-no-files-found: error
+
   extension-typecheck:
     name: extension typecheck + build
     runs-on: ubuntu-latest
