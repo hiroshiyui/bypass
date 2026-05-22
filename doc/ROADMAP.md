@@ -231,8 +231,9 @@ Strategy: native Jetpack Compose UI on top of `bypass-core` exposed via [UniFFI]
 ### Milestone 8.2: Android UI ([ADR-0025](adr/0025-android-ui-architecture.md))
 - [x] **8.2.a** Compose app shell, Material 3 theming ([`android/`](../android/))
 - [x] **8.2.a** App-scoped storage backing the `Storage` trait (`context.filesDir.resolve("store")` via `bypass-ffi::AppStorage`)
-- [ ] **8.2.b** OpenKeychain client (AIDL) implementing the Rust `Crypto` callback — `StubCrypto` placeholder in 8.2.a throws on every call
-- [ ] **8.2.b** Android Gradle build in CI (deferred per ADR-0025 until the first local Studio sync verifies the project)
+- [x] **8.2.b** OpenKeychain client (AIDL) implementing the Rust `Crypto` callback ([`OpenKeychainCrypto.kt`](../android/app/src/main/kotlin/io/bypass/android/crypto/OpenKeychainCrypto.kt)) — happy-path scope; cold-cache surfaces an actionable `BypassException.Crypto` error
+- [x] **8.2.b** Android Gradle build in CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml) `android-gradle-build` job)
+- [ ] **8.2.b.ii** Async PendingIntent bridge for `RESULT_CODE_USER_INTERACTION_REQUIRED` (auto-resume encrypt / decrypt after OpenKeychain unlocks) — only if real users hit the cold-cache UX often enough
 - [ ] **8.2.c** Optional `git2` integration for sync (libgit2 with NDK), or defer to manual import/export
 
 ---

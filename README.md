@@ -49,7 +49,7 @@ load-bearing design decisions live in
 | Linux CLI (`bypass`) | ✅ Phases 1–6 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions + LAN P2P sync + sync daemon + CI/release packaging) |
 | Firefox & Chrome extension | ✅ Phase 7 MVP shipped (popup + native messaging); 🗓 autofill (7.2.b) |
 | Android library (`bypass-ffi`) | ✅ Phase 8.1 shipped (UniFFI crate + Android CI cross-compile) |
-| Android app | ✅ Phase 8.2.a shipped (Compose UI scaffold + stub Crypto); 🗓 OpenKeychain client (8.2.b) |
+| Android app | ✅ Phase 8.2.b shipped (Compose UI + OpenKeychain AIDL client); 🗓 async PendingIntent bridge (8.2.b.ii) for cold-cache UX |
 
 ## Getting started
 
@@ -487,13 +487,17 @@ NavHost + per-screen `ViewModel`, manual DI, Material 3
 theming with dynamic colour on Android 12+. Locked in by
 [ADR-0025](doc/adr/0025-android-ui-architecture.md).
 
-**Status**: Phase 8.2.a shipped a UI scaffold with a stub
-`Crypto`. App launches, Init / List / Find / Rm flows work
-end-to-end. Insert / Show / Generate surface
-`BypassException.Crypto("…lands in 8.2.b…")` in a Snackbar
-— proving the FFI round-trip is wired without needing
-OpenKeychain installed yet. **Phase 8.2.b** replaces the
-stub with an OpenKeychain AIDL client.
+**Status**: Phase 8.2.b shipped. Compose UI on the device,
+binding to OpenKeychain's OpenPGP AIDL service for every
+encrypt / decrypt — same platform-delegated-crypto posture
+[ADR-0001](doc/adr/0001-platform-delegated-crypto.md) sets
+for the desktop CLI's `gpg` subprocess. Install
+[OpenKeychain](https://github.com/open-keychain/open-keychain)
+on the device, add at least one OpenPGP key to its keyring,
+then bypass works end-to-end. **Phase 8.2.b.ii** (if real
+users hit the cold-cache UX often enough) adds the async
+PendingIntent bridge so encrypt / decrypt resume after an
+OpenKeychain passphrase prompt without manual retry.
 
 ```sh
 # Open `android/` in Android Studio (Iguana or later).
@@ -504,8 +508,8 @@ cd android/
 ```
 
 See [`android/README.md`](android/README.md) for the full
-walk-through, including the Rust ↔ Kotlin Gradle integration
-and the 8.2.a → 8.2.b → 8.2.c roadmap.
+walk-through, including the OpenKeychain prereqs, the Rust ↔
+Kotlin Gradle integration, and what 8.2.b.ii / 8.2.c would add.
 
 ## Migrating from `pass`
 
