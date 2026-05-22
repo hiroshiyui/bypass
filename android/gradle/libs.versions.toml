@@ -39,6 +39,11 @@ lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-com
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 # UniFFI's Kotlin output depends on JNA at runtime.
 jna = { module = "net.java.dev.jna:jna", version = "5.15.0" }
+# OpenKeychain OpenPGP API — AIDL client + helper classes for
+# binding to `org.sufficientlysecure.keychain`. The library is on
+# Maven Central; OpenKeychain itself is the AIDL service the user
+# installs separately.
+openpgp-api = { module = "org.sufficientlysecure:openpgp-api", version = "14.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

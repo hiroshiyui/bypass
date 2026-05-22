@@ -88,6 +88,8 @@ dependencies {
     implementation(libs.navigation.compose)
     // UniFFI's Kotlin output uses JNA to talk to libbypass.so.
     implementation(libs.jna) { artifact { type = "aar" } }
+    // OpenKeychain OpenPGP AIDL client (per ADR-0001 / ADR-0025).
+    implementation(libs.openpgp.api)
     debugImplementation(libs.compose.ui.tooling)
 }
 

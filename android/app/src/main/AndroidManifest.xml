@@ -2,6 +2,18 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+        Android 11 (API 30) introduced package-visibility filtering:
+        an app can only see another app's package metadata / bind to
+        its services if it declares an explicit <queries> entry.
+        We bind to OpenKeychain's OpenPGP AIDL service, so list its
+        package here. See ADR-0001 (platform-delegated crypto) and
+        ADR-0025 (the Android UI architecture that consumes it).
+    -->
+    <queries>
+        <package android:name="org.sufficientlysecure.keychain" />
+    </queries>
+
     <application
         android:name=".BypassApplication"
         android:allowBackup="false"
