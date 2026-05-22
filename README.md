@@ -386,6 +386,52 @@ choices when a rebase fails:
 Last resort: `bypass git rebase --abort` to bail out, decide on a
 strategy, then re-attempt `bypass sync`.
 
+## Browser extension (Firefox + Chrome)
+
+`bypass` ships a Manifest V3 WebExtension under
+[`extension/`](extension/) that delegates every privileged
+operation back to the desktop binary via the browser's
+[native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)
+channel. The extension is a thin UI: search the store, click
+to copy a password. All crypto / git / store I/O stays on the
+desktop side, behind the same `gpg` subprocess the CLI has
+always used.
+
+- **Wire protocol**: [ADR-0022](doc/adr/0022-native-messaging-wire-protocol.md)
+- **Extension architecture**: [ADR-0023](doc/adr/0023-browser-extension-architecture.md)
+- **Browser support**: Firefox + Chrome. Chromium / Brave /
+  Edge / Vivaldi load the same artefact via Chrome's manifest
+  path; see [`extension/README.md`](extension/README.md).
+
+```sh
+# 1. Register the native host (run once per machine).
+#    Re-run with --chrome-id <id> after loading the extension
+#    unpacked, using the ID shown on chrome://extensions.
+bypass messaging-host install
+
+# 2. Build the extension.
+cd extension/
+npm ci
+node build.mjs              # writes extension/dist/
+node build.mjs --zip        # also writes bypass-extension-X.Y.Z.zip
+
+# 3. Load unpacked.
+#    Firefox: about:debugging → "Load Temporary Add-on" → dist/manifest.json
+#    Chrome:  chrome://extensions → Developer mode → Load unpacked → dist/
+```
+
+Removing the host manifests:
+
+```sh
+bypass messaging-host uninstall
+```
+
+Out of scope for v1: in-page autofill (Phase 7.2.b), icons
+(both browsers fall back to a default puzzle-piece), and
+AMO / Chrome Web Store submission automation. See
+[`extension/README.md`](extension/README.md) for v1
+limitations and troubleshooting.
+
 ## Migrating from `pass`
 
 The on-disk format is identical to

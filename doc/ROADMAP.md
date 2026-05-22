@@ -203,18 +203,18 @@ Actual dependencies as of Phase 5.2:
 
 Strategy: thin WebExtension UI that delegates all crypto, storage, and git to the desktop `bypass` binary via the [WebExtension native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) protocol.
 
-### Milestone 7.1: Native messaging host in the CLI
-- [ ] `bypass messaging-host` subcommand — length-prefixed JSON on stdin/stdout
-- [ ] JSON request schema: `ls`, `find`, `show`, `insert`, `generate`, `otp`
-- [ ] Reuses the same `Store` instance as the CLI (same Crypto/Storage/VCS)
-- [ ] Native-messaging manifest templates for Firefox and Chrome (install instructions)
+### Milestone 7.1: Native messaging host in the CLI ([ADR-0022](adr/0022-native-messaging-wire-protocol.md))
+- [x] `bypass messaging-host` subcommand — length-prefixed JSON on stdin/stdout
+- [x] JSON request schema: `ls`, `find`, `show`, `insert`, `generate`, `otp`, `rm`
+- [x] Reuses the same `Store` instance as the CLI (same Crypto/Storage/VCS)
+- [x] Native-messaging manifest templates for Firefox and Chrome (via `bypass messaging-host install`)
 
-### Milestone 7.2: WebExtension UI (Manifest V3)
-- [ ] Single TypeScript codebase for Firefox + Chrome (`extension/` directory)
-- [ ] `chrome.runtime.connectNative("io.bypass.host")` client
-- [ ] Popup UI: search, reveal, copy-to-clipboard (via browser clipboard API)
-- [ ] Optional in-page autofill on user gesture
-- [ ] Packaging for AMO and Chrome Web Store
+### Milestone 7.2: WebExtension UI (Manifest V3, [ADR-0023](adr/0023-browser-extension-architecture.md))
+- [x] Single TypeScript codebase for Firefox + Chrome ([`extension/`](../extension/))
+- [x] `chrome.runtime.connectNative("io.bypass.host")` client ([`extension/src/native.ts`](../extension/src/native.ts))
+- [x] Popup UI: search, reveal, copy-to-clipboard (via browser clipboard API)
+- [ ] **7.2.b** Optional in-page autofill on user gesture (deferred — needs content scripts + background worker)
+- [ ] **7.2.b** Packaging for AMO and Chrome Web Store (build script emits a loadable / submittable zip; manual upload for v1)
 
 ---
 
