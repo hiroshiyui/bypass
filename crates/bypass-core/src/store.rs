@@ -400,7 +400,23 @@ fn gitattributes_path() -> RelPath {
 /// The single attribute rule [`Store::install_gitattributes`] guarantees
 /// is present. Trailing newline is included so the appender doesn't
 /// produce a malformed file when concatenating onto an existing line.
-pub const GITATTRIBUTES_RULE: &str = "*.gpg binary\n";
+///
+/// Two attributes ride this line:
+/// - `binary` — disables `core.autocrlf` line-ending normalisation
+///   ([ADR-0002](../../../doc/adr/0002-pass-compatible-on-disk-layout.md)).
+/// - `merge=bypass-take-theirs` — selects the custom merge driver that
+///   resolves opaque-ciphertext conflicts during rebase by always
+///   taking the incoming side
+///   ([ADR-0011](../../../doc/adr/0011-sync-semantics-hybrid.md)).
+///
+/// The driver itself is registered in `.git/config` by the CLI at sync
+/// time (Phase 5.2.b.ii); stores cloned without that config see the
+/// attribute, get an "unknown driver" warning from git, and fall back
+/// to the default 3-way merge — which produces ordinary conflict
+/// markers in the binary blob. That's recoverable (the user just runs
+/// `bypass sync` once on the new clone to install the driver) and
+/// never silently corrupts data.
+pub const GITATTRIBUTES_RULE: &str = "*.gpg binary merge=bypass-take-theirs\n";
 
 /// Does `body` already declare `*.gpg` as binary? We tolerate any
 /// whitespace shape and any extra attributes (e.g. `*.gpg binary

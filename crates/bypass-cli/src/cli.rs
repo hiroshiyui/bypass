@@ -198,6 +198,27 @@ pub enum Command {
         /// restoring whatever was there before.
         seconds: u64,
     },
+
+    /// Internal: custom git merge driver registered via
+    /// `.gitattributes` (`merge=bypass-take-theirs`). Always resolves
+    /// a `.gpg` conflict by taking the incoming side, since
+    /// ciphertext blobs are opaque and have no meaningful 3-way merge
+    /// ([ADR-0011](../../doc/adr/0011-sync-semantics-hybrid.md)). Not
+    /// meant for direct user invocation.
+    #[command(hide = true, name = "__merge-take-theirs")]
+    MergeTakeTheirs {
+        /// `%O` — ancestor blob path.
+        ancestor: String,
+        /// `%A` — current (ours) blob path. The driver writes the
+        /// resolved content here.
+        ours: String,
+        /// `%B` — other (theirs) blob path.
+        theirs: String,
+        /// `%P` — pathname (for diagnostics).
+        path: String,
+        /// `%L` — conflict-marker-size (unused).
+        marker_size: String,
+    },
 }
 
 /// Sub-actions under `bypass sync`.

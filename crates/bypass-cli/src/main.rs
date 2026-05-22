@@ -68,9 +68,13 @@ fn dispatch() -> Result<u8> {
             Ok(0)
         }
         Command::Init { gpg_ids } => {
+            let root = StorageFs::resolve_default_root().context("resolve store root")?;
             let mut store = open_store()?;
             let keys: Vec<KeyId> = gpg_ids.into_iter().map(KeyId::new).collect();
             store.init(&keys).map_err(map_store_err)?;
+            // Register the merge driver referenced by `.gitattributes`
+            // (see ADR-0011). Idempotent; safe to run on every init.
+            sync::merge_driver::register_in_git_config(&root)?;
             Ok(0)
         }
         Command::Insert {
@@ -235,6 +239,18 @@ fn dispatch() -> Result<u8> {
             clipboard::run_daemon(seconds)?;
             Ok(0)
         }
+        Command::MergeTakeTheirs {
+            ancestor,
+            ours,
+            theirs,
+            path,
+            marker_size: _,
+        } => sync::merge_driver::take_theirs(
+            std::path::Path::new(&ancestor),
+            std::path::Path::new(&ours),
+            std::path::Path::new(&theirs),
+            &path,
+        ),
         Command::Ext { name, args } => extensions::dispatch(&name, &args),
         Command::Sync { force, sub } => match sub {
             None => sync(force),
@@ -357,6 +373,11 @@ fn sync(force: bool) -> Result<u8> {
     // auto-write in `Store::init`. Doing this before the audit so the
     // freshly committed file rides along with the upcoming push.
     install_gitattributes_if_missing(&root)?;
+    // The driver registration is idempotent — re-running on every sync
+    // upgrades stores cloned after `bypass init` ran. Cheap (two `git
+    // config` calls), so we don't bother gating it on the attribute
+    // diff.
+    sync::merge_driver::register_in_git_config(&root)?;
     if !force {
         let issues = audit::audit_for_push(&root)?;
         if !issues.is_empty() {
@@ -388,7 +409,37 @@ fn sync(force: bool) -> Result<u8> {
         );
     }
     eprintln!("synced.");
+    notice_paired_peers()?;
     Ok(0)
+}
+
+/// Surface paired peers after a git sync. The pack-exchange building
+/// blocks (`sync::syncing`) are in place, but driving them in this
+/// one-shot CLI invocation requires either a stored multiaddr per peer
+/// or mDNS-driven discovery against a peer that's also listening right
+/// now — both arrive with the daemon in Phase 5.2.c. Until then we
+/// just remind the user that pairs exist.
+fn notice_paired_peers() -> Result<()> {
+    let path = match sync::peers::Peers::default_path() {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
+    let peers = match sync::peers::Peers::load(&path) {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
+    if peers.is_empty() {
+        return Ok(());
+    }
+    eprintln!(
+        "bypass: {} paired peer(s) on file; peer-to-peer sync activates \
+         when the daemon lands (Phase 5.2.c):",
+        peers.records().len()
+    );
+    for r in peers.records() {
+        eprintln!("  - {} ({})", r.name, r.peer_id);
+    }
+    Ok(())
 }
 
 /// Ensure `.gitattributes` carries the `*.gpg binary` rule; if not, write
