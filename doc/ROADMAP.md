@@ -151,7 +151,7 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
   - [x] **5.2.b.ii** Sync core: `WantPackFrom` RPC, custom merge driver, leak-audit on receive
   - [x] **5.2.b.iii** ADR-0016 (DoS defences: pack-size cap + rate limit) + bootstrap-protocol verification + two-process integration tests
 - [x] **5.2.c** Daemon mode + `bypass sync status` ([ADR-0017](adr/0017-daemon-socket-location.md), [ADR-0018](adr/0018-daemon-status-protocol.md), [ADR-0019](adr/0019-peer-revocation-trust-semantics.md))
-- [ ] **5.2.d** Two-peer integration tests + README rewrite
+- [x] **5.2.d** Two-peer integration tests + README rewrite
 
 ---
 
