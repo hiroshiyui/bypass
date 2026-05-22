@@ -386,13 +386,13 @@ These weren't in the original five but emerged on closer review.
 None block 5.2.a; each is tagged with the sub-milestone where it
 should be resolved and whether it warrants its own ADR.
 
-6. **Identity-key location, perms, and rotation.** Phase 5.2.a
-   generates a libp2p identity keypair per device. Open: file
-   path under `$XDG_CONFIG_HOME/bypass/`, mode bits (presumably
-   0600 to match `peers.toml`), and whether rotation is
-   supported (and if so, what happens to pinned peers when their
-   counterpart's key rotates). **ADR candidate in 5.2.a
-   planning.**
+6. **Identity-key location, perms, and rotation** — **resolved**
+   in [ADR-0015](adr/0015-device-identity-key.md): Ed25519
+   keypair at `$XDG_CONFIG_HOME/bypass/identity.key` with `0600`
+   permissions (refuse-to-load on wider perms), libp2p protobuf
+   encoding, atomic write. Rotation via
+   `bypass sync identity rotate --confirm` clears `peers.toml`
+   (re-pair every device); no automatic rotation.
 
 7. **Peer revocation UX and trust semantics.** "I lost a device,
    untrust it" needs both a CLI surface (`bypass sync peer rm
