@@ -190,7 +190,7 @@ Actual dependencies as of Phase 5.2:
 - [x] Man page generation (`bypass man`)
 - [ ] Migration helper from `pass` (should be a no-op if format matches)
 - [ ] Integration tests covering full CRUD + git flows
-- [ ] CI: build + test on Linux/macOS
+- [x] CI: build + test on Linux/macOS ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml))
 - [ ] Release packaging (cargo-dist or similar)
 - [ ] Sync-daemon service integration (`start` / `stop` / `status` / `enable`):
   - [ ] Linux: systemd user unit at `~/.config/systemd/user/bypass-sync.service`, managed via `systemctl --user`

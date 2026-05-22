@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Continuous integration for `bypass`: build, lint and run the default
+# test suite on Linux and macOS for every push to `main` and every PR.
+#
+# The `#[ignore]`-by-default integration tests (`sync_loopback`,
+# `sync_daemon`) are *not* run here — they need real networking and,
+# for the mDNS round-trip case, working IPv4 multicast routes that
+# hosted runners do not reliably expose (see
+# `crates/bypass-cli/tests/sync_daemon.rs`). Run them locally with
+# `cargo test --test sync_loopback -- --ignored` etc.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable, rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Linux runners ship gpg; macOS does not.
+      - name: Install GPG (macOS only)
+        if: runner.os == 'macOS'
+        run: brew install gnupg
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace

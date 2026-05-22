@@ -1,5 +1,7 @@
 # bypass
 
+[![CI](https://github.com/hiroshiyui/bypass/actions/workflows/ci.yml/badge.svg)](https://github.com/hiroshiyui/bypass/actions/workflows/ci.yml)
+
 > ⚠️ **Pre-release — not yet audited.**
 > The Linux CLI now covers every feature in Phases 1–5.2 (CRUD, git,
 > generation, clipboard, OTP, extensions, leak-check audit, LAN P2P
