@@ -46,9 +46,9 @@ load-bearing design decisions live in
 
 | Frontend | Status |
 |---|---|
-| Linux CLI (`bypass`) | ✅ Phases 1–5.2 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions + sync + leak-check audit + LAN P2P sync) |
-| Firefox & Chrome extension | 🗓 Planned (Phase 7) |
-| Android app | 🗓 Planned (Phase 8) |
+| Linux CLI (`bypass`) | ✅ Phases 1–6 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions + LAN P2P sync + sync daemon + CI/release packaging) |
+| Firefox & Chrome extension | ✅ Phase 7 MVP shipped (popup + native messaging); 🗓 autofill (7.2.b) |
+| Android library (`bypass-ffi`) | ✅ Phase 8.1 shipped (UniFFI crate + Android CI cross-compile); 🗓 Compose UI + OpenKeychain client (8.2) |
 
 ## Getting started
 
@@ -431,6 +431,52 @@ Out of scope for v1: in-page autofill (Phase 7.2.b), icons
 AMO / Chrome Web Store submission automation. See
 [`extension/README.md`](extension/README.md) for v1
 limitations and troubleshooting.
+
+## Android library (FFI crate)
+
+[`crates/bypass-ffi/`](crates/bypass-ffi/) is the Rust FFI
+surface for the planned Android app — a `cdylib` that
+[UniFFI](https://mozilla.github.io/uniffi-rs/) wraps for
+Kotlin / Swift consumers. See
+[ADR-0024](doc/adr/0024-android-ffi-via-uniffi.md) for the
+wire shape; the Kotlin surface looks like:
+
+```kotlin
+val store = BypassStore.open(
+    rootDir = context.filesDir.resolve("store").absolutePath,
+    crypto  = OpenKeychainCrypto(context),  // implements `Crypto`
+)
+store.init(listOf("you@example.com"))
+val plaintext: ByteArray = store.show("email/work")
+```
+
+`Crypto` is a UniFFI callback interface: Kotlin implements it
+against
+[OpenKeychain](https://github.com/open-keychain/open-keychain)'s
+OpenPGP AIDL service so the user's existing keyring stays in
+OpenKeychain — same platform-delegated-crypto posture
+[ADR-0001](doc/adr/0001-platform-delegated-crypto.md) sets
+for every frontend.
+
+Phase 8.1 (this slice) ships the Rust crate + CI
+cross-compile for `aarch64-linux-android` and
+`armv7-linux-androideabi`. Phase 8.2 will add the actual
+Gradle / Compose app on top.
+
+```sh
+# Local exploration (NDK required for the cross-compile):
+rustup target add aarch64-linux-android armv7-linux-androideabi
+cargo install --locked cargo-ndk
+cargo ndk -t arm64-v8a -t armeabi-v7a build --release -p bypass-ffi
+
+# Emit Kotlin bindings to a tempdir (the Android Gradle build
+# in 8.2 will run this as a build step):
+cargo run -p bypass-ffi --bin uniffi-bindgen -- \
+    generate \
+    --library target/debug/libbypass.so \
+    --language kotlin \
+    --out-dir /tmp/bypass-kotlin
+```
 
 ## Migrating from `pass`
 

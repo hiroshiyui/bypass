@@ -222,11 +222,11 @@ Strategy: thin WebExtension UI that delegates all crypto, storage, and git to th
 
 Strategy: native Jetpack Compose UI on top of `bypass-core` exposed via [UniFFI](https://mozilla.github.io/uniffi-rs/). The `Crypto` trait is declared as a UniFFI callback interface so the Kotlin side can back it with [OpenKeychain](https://github.com/open-keychain/open-keychain)'s OpenPGP AIDL service — the Rust core never holds keys.
 
-### Milestone 8.1: FFI crate
-- [ ] New `crates/bypass-ffi/` cdylib using UniFFI
-- [ ] Declare `Crypto` as a callback (foreign-implemented) interface
-- [ ] Expose `Store` operations through generated Kotlin bindings
-- [ ] CI: build for `aarch64-linux-android` and `armv7-linux-androideabi`
+### Milestone 8.1: FFI crate ([ADR-0024](adr/0024-android-ffi-via-uniffi.md))
+- [x] New [`crates/bypass-ffi/`](../crates/bypass-ffi/) cdylib using UniFFI
+- [x] Declare `Crypto` as a callback (foreign-implemented) interface
+- [x] Expose `Store` operations through generated Kotlin bindings (`cargo run -p bypass-ffi --bin uniffi-bindgen` emits at build time; the Android Gradle project in 8.2 invokes it)
+- [x] CI: build for `aarch64-linux-android` and `armv7-linux-androideabi` ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml) `android-ffi` job)
 
 ### Milestone 8.2: Android UI
 - [ ] Compose app shell, Material 3 theming
