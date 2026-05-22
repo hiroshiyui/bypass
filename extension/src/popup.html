@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  bypass WebExtension popup. The bundled `popup.js` wires up the
+  search input + entry list at DOMContentLoaded.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>bypass</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 13px;
+        margin: 0;
+        padding: 8px;
+        width: 320px;
+        min-height: 120px;
+      }
+      h1 {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0 0 8px 0;
+        opacity: 0.7;
+      }
+      input[type="search"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        font-size: 13px;
+        border: 1px solid rgba(127, 127, 127, 0.4);
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+      }
+      input[type="search"]:focus {
+        outline: 2px solid rgba(80, 120, 200, 0.6);
+        outline-offset: -1px;
+      }
+      #status {
+        margin-top: 8px;
+        font-size: 12px;
+        opacity: 0.7;
+        min-height: 1em;
+      }
+      ul {
+        list-style: none;
+        margin: 8px 0 0 0;
+        padding: 0;
+        max-height: 280px;
+        overflow-y: auto;
+      }
+      li {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 6px;
+        border-radius: 3px;
+      }
+      li:hover {
+        background: rgba(127, 127, 127, 0.1);
+      }
+      li button {
+        margin-left: auto;
+        font-size: 11px;
+        padding: 2px 6px;
+        border: 1px solid rgba(127, 127, 127, 0.4);
+        background: transparent;
+        color: inherit;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      li button:hover {
+        background: rgba(80, 120, 200, 0.15);
+      }
+      .entry-name {
+        flex: 1 1 auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .error {
+        color: #d32f2f;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>bypass</h1>
+    <input
+      type="search"
+      id="q"
+      placeholder="Search…"
+      autocomplete="off"
+      spellcheck="false"
+      autofocus
+    />
+    <div id="status"></div>
+    <ul id="entries"></ul>
+    <script src="popup.js"></script>
+  </body>
+</html>

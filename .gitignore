@@ -1,2 +1,5 @@
 /target
 /doc/security-audit.md
+/extension/dist/
+/extension/node_modules/
+/extension/bypass-extension-*.zip

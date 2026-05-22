@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "bypass",
+  "version": "0.1.0",
+  "description": "Search and copy passwords from your bypass store.",
+  "permissions": ["nativeMessaging", "clipboardWrite"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "bypass"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "bypass@bypass.example",
+      "strict_min_version": "109.0"
+    }
+  }
+}
