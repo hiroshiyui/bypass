@@ -192,10 +192,10 @@ Actual dependencies as of Phase 5.2:
 - [x] Integration tests covering full CRUD + git flows ([`tests/end_to_end.rs`](../crates/bypass-cli/tests/end_to_end.rs): 26 tests; [`tests/sync_loopback.rs`](../crates/bypass-cli/tests/sync_loopback.rs) + [`tests/sync_daemon.rs`](../crates/bypass-cli/tests/sync_daemon.rs) `#[ignore]`-by-default)
 - [x] CI: build + test on Linux/macOS ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml))
 - [ ] Release packaging (cargo-dist or similar)
-- [ ] Sync-daemon service integration (`start` / `stop` / `status` / `enable`):
-  - [ ] Linux: systemd user unit at `~/.config/systemd/user/bypass-sync.service`, managed via `systemctl --user`
-  - [ ] macOS: launchd agent at `~/Library/LaunchAgents/io.bypass.sync.plist`, managed via `launchctl bootstrap`/`bootout`/`kickstart`/`print`
-  - Follows the Phase 5.2 daemon-supervision open question recorded in [`doc/sync-p2p-evaluation.md`](sync-p2p-evaluation.md)
+- [x] Sync-daemon service integration (`install` / `uninstall` / `start` / `stop` / `enable` / `disable` / `status`, per [ADR-0020](adr/0020-daemon-service-supervision.md)):
+  - [x] Linux: systemd user unit at `~/.config/systemd/user/bypass-sync.service`, managed via `systemctl --user`
+  - [x] macOS: launchd agent at `~/Library/LaunchAgents/io.bypass.sync.plist`, managed via `launchctl bootstrap`/`bootout`/`kickstart`/`print`
+  - Resolves the Phase 5.2 daemon-supervision open question recorded in [`doc/sync-p2p-evaluation.md`](sync-p2p-evaluation.md)
 
 ---
 

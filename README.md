@@ -261,6 +261,33 @@ With the daemon running:
 `bypass sync status --json` emits the same snapshot in JSON for
 scripts and dashboards.
 
+#### Run as a service (systemd / launchd)
+
+`bypass sync daemon` runs in the foreground by default — handy
+for evaluation, not great for "always-on". The
+[ADR-0020](doc/adr/0020-daemon-service-supervision.md) service
+ops install a systemd user unit (Linux) or a launchd user agent
+(macOS) at the conventional per-user path, with the
+`bypass` binary's current path baked in:
+
+```sh
+bypass sync daemon install   # write the unit / plist
+bypass sync daemon start     # run it now (this session only)
+bypass sync daemon enable    # auto-start on every login
+
+bypass sync daemon status    # ask the supervisor: is it running?
+bypass sync status           # ask the running daemon: what peers do you see?
+
+bypass sync daemon disable   # stop auto-starting
+bypass sync daemon stop      # stop it now
+bypass sync daemon uninstall # remove the unit / plist
+```
+
+`install` is off-by-default — it writes the file but does **not**
+start the daemon or enable autostart. The user opts in explicitly
+with `start` / `enable`. Re-run `install` after upgrading
+`bypass` so the supervisor sees the new binary path.
+
 #### Revoking a paired peer
 
 ```sh

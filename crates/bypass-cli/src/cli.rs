@@ -267,10 +267,18 @@ pub enum SyncCmd {
         action: SyncIdentityCmd,
     },
 
-    /// Run the foreground sync daemon: holds the libp2p Swarm,
-    /// watches the store for changes, serves paired peers, and
-    /// answers `bypass sync status` queries. Phase 5.2.c.
-    Daemon,
+    /// Run the foreground sync daemon (Phase 5.2.c), or manage the
+    /// platform supervisor that auto-runs it on login / after a
+    /// crash (Phase 6 — ADR-0020).
+    ///
+    /// With no sub-action, runs the daemon foreground. With one of
+    /// `install` / `uninstall` / `start` / `stop` / `enable` /
+    /// `disable` / `status`, drives systemd (Linux) or launchd
+    /// (macOS) instead — see `bypass sync daemon <op> --help`.
+    Daemon {
+        #[command(subcommand)]
+        action: Option<SyncDaemonCmd>,
+    },
 
     /// Print a snapshot of the running daemon's view: local peer
     /// id, listening multiaddrs, paired peers and their last
@@ -302,6 +310,36 @@ pub enum SyncPeerCmd {
         #[arg(long)]
         yes: bool,
     },
+}
+
+/// Sub-actions under `bypass sync daemon`. Without any of these,
+/// the bare `bypass sync daemon` command runs the daemon in the
+/// foreground. See [ADR-0020](../../doc/adr/0020-daemon-service-supervision.md).
+#[derive(Debug, Subcommand)]
+pub enum SyncDaemonCmd {
+    /// Write the systemd user unit (Linux) or launchd plist
+    /// (macOS) so the daemon can be supervisor-managed. Does not
+    /// start the daemon or enable autostart — those are
+    /// explicit follow-up steps. Re-run after upgrading
+    /// `bypass` so the supervisor sees the new binary path.
+    Install,
+    /// Remove the supervisor file written by `install`.
+    Uninstall,
+    /// Ask the supervisor to start the daemon now (not
+    /// boot-persistent unless `enable` was also run).
+    Start,
+    /// Ask the supervisor to stop the daemon now.
+    Stop,
+    /// Configure the supervisor to auto-start the daemon on
+    /// login.
+    Enable,
+    /// Stop auto-starting the daemon on login.
+    Disable,
+    /// Print the supervisor's view of the daemon: is it
+    /// running, is it enabled, last exit code. Distinct from
+    /// `bypass sync status` (which queries the live daemon's
+    /// peer-state snapshot — see ADR-0018).
+    Status,
 }
 
 #[derive(Debug, Subcommand)]

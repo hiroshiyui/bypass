@@ -33,6 +33,7 @@ pub mod merge_driver;
 pub mod pairing;
 pub mod peers;
 pub mod ratelimit;
+pub mod service;
 pub mod socket;
 pub mod syncing;
 pub mod transport;

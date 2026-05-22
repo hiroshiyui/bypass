@@ -276,7 +276,7 @@ fn dispatch() -> Result<u8> {
                 name,
                 addr,
             }) => sync_pair(show, enter, name, addr),
-            Some(cli::SyncCmd::Daemon) => sync_daemon(),
+            Some(cli::SyncCmd::Daemon { action }) => sync_daemon_dispatch(action),
             Some(cli::SyncCmd::Status { json }) => sync_status(json),
             Some(cli::SyncCmd::Peer {
                 action: cli::SyncPeerCmd::Rm { name, yes },
@@ -637,6 +637,22 @@ fn persist_paired(paired: sync::pairing::PairedPeer) -> Result<u8> {
         paired.remote.name, paired.remote.peer_id
     );
     Ok(0)
+}
+
+/// Route `bypass sync daemon [op]` to either the foreground daemon
+/// (no op) or one of the supervisor ops from ADR-0020.
+fn sync_daemon_dispatch(action: Option<cli::SyncDaemonCmd>) -> Result<u8> {
+    use cli::SyncDaemonCmd::*;
+    match action {
+        None => sync_daemon(),
+        Some(Install) => sync::service::install(),
+        Some(Uninstall) => sync::service::uninstall(),
+        Some(Start) => sync::service::start(),
+        Some(Stop) => sync::service::stop(),
+        Some(Enable) => sync::service::enable(),
+        Some(Disable) => sync::service::disable(),
+        Some(Status) => sync::service::status(),
+    }
 }
 
 fn sync_daemon() -> Result<u8> {
