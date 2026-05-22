@@ -341,6 +341,33 @@ choices when a rebase fails:
 Last resort: `bypass git rebase --abort` to bail out, decide on a
 strategy, then re-attempt `bypass sync`.
 
+## Migrating from `pass`
+
+The on-disk format is identical to
+[`pass`](https://www.passwordstore.org/)
+([ADR-0002](doc/adr/0002-pass-compatible-on-disk-layout.md)):
+`<store>/<entry>.gpg` for every secret, `.gpg-id` files at the
+root and per-subtree to declare recipients, and a regular git
+repository on top. Migrating is therefore a no-op — just point
+`bypass` at your existing store:
+
+```sh
+# Either set the env var (matches pass's own convention)
+export PASSWORD_STORE_DIR=~/.password-store
+
+# …or accept the default ~/.password-store and don't set anything.
+bypass doctor      # confirms gpg, recipients, .gpg-id, .gitattributes
+bypass ls          # browse what's already there
+bypass show github.com/you
+```
+
+If your store predates `bypass init`'s `.gitattributes` auto-write
+(any store created by `pass` will), running `bypass sync` once
+installs the canonical `*.gpg binary merge=bypass-take-theirs`
+rule into `.gitattributes` and commits it — see the message
+"installed missing `.gitattributes` rule" the first time. From
+then on, `bypass` and `pass` can share the same store byte-for-byte.
+
 ## Troubleshooting
 
 `bypass doctor` is the first stop for any "why doesn't this work"

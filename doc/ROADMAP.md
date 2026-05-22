@@ -188,8 +188,8 @@ Actual dependencies as of Phase 5.2:
 
 - [x] `bypass completion <shell>` — generate shell completions
 - [x] Man page generation (`bypass man`)
-- [ ] Migration helper from `pass` (should be a no-op if format matches)
-- [ ] Integration tests covering full CRUD + git flows
+- [x] Migration helper from `pass` (no-op — same on-disk format per [ADR-0002](adr/0002-pass-compatible-on-disk-layout.md); see README "Migrating from `pass`")
+- [x] Integration tests covering full CRUD + git flows ([`tests/end_to_end.rs`](../crates/bypass-cli/tests/end_to_end.rs): 26 tests; [`tests/sync_loopback.rs`](../crates/bypass-cli/tests/sync_loopback.rs) + [`tests/sync_daemon.rs`](../crates/bypass-cli/tests/sync_daemon.rs) `#[ignore]`-by-default)
 - [x] CI: build + test on Linux/macOS ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml))
 - [ ] Release packaging (cargo-dist or similar)
 - [ ] Sync-daemon service integration (`start` / `stop` / `status` / `enable`):
