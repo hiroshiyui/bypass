@@ -1,4 +1,4 @@
-# bypass — Android app (Phase 8.2.b)
+# bypass — Android app (Phase 8.2.b.ii)
 
 A Compose UI on top of [`crates/bypass-ffi/`](../crates/bypass-ffi/).
 Searches your `bypass` store, copies passwords to the clipboard,
@@ -11,16 +11,17 @@ realised for Android per [ADR-0024](../doc/adr/0024-android-ffi-via-uniffi.md) +
 
 ## Status
 
-**8.2.b — OpenKeychain integration (happy-path).** App
-launches, binds OpenKeychain on first use, every CRUD op
-works end-to-end as long as OpenKeychain has a hot passphrase
-cache. If the cache has expired, encrypt / decrypt surface
-an actionable `BypassException.Crypto("OpenKeychain needs
-user interaction … unlock the key, then retry")` in a
-Snackbar; the user opens OpenKeychain, unlocks, returns to
-bypass, and retries. No async PendingIntent bridge yet —
-**8.2.b.ii** is where that lives if real users hit the cold-
-cache path often.
+**8.2.b.ii — OpenKeychain with the async PendingIntent
+bridge.** App launches, binds OpenKeychain on first use,
+every CRUD op works end-to-end. When OpenKeychain returns
+`RESULT_CODE_USER_INTERACTION_REQUIRED` (cold passphrase
+cache, key picker, …), the app auto-launches OpenKeychain's
+returned `PendingIntent` via `ActivityResultLauncher`,
+suspends the encrypt/decrypt call on a 1-slot blocking
+queue, and resumes the API call once the user finishes the
+OpenKeychain UI — no manual retry needed. Bounded by five
+interaction rounds per call so a misbehaving service can't
+loop.
 
 ## Prerequisites
 
@@ -93,7 +94,7 @@ Each call dispatches `OpenPgpApi.executeApi()`:
 | ------------------------------------ | --------------------------------------------------------------------------------- |
 | `RESULT_CODE_SUCCESS`                | Return the bytes.                                                                 |
 | `RESULT_CODE_ERROR`                  | Throw `BypassException.Crypto` with OpenKeychain's error message.                 |
-| `RESULT_CODE_USER_INTERACTION_REQUIRED` | Throw `BypassException.Crypto("…unlock the key, then retry")` — see 8.2.b.ii. |
+| `RESULT_CODE_USER_INTERACTION_REQUIRED` | Hand the `PendingIntent` to [`CryptoUiBridge`](app/src/main/kotlin/io/bypass/android/crypto/CryptoUiBridge.kt); `MainActivity`'s `ActivityResultLauncher` launches OpenKeychain; on the user's confirmation we re-execute the API call automatically. |
 
 The `<queries>` block in `AndroidManifest.xml` declares
 `org.sufficientlysecure.keychain` so Android 11+ package
@@ -102,14 +103,6 @@ silently fails on API 30+.
 
 ## What's missing (and why)
 
-- **Async PendingIntent bridge** (8.2.b.ii). On
-  `RESULT_CODE_USER_INTERACTION_REQUIRED` the proper UX is
-  to launch the returned `PendingIntent` via
-  `ActivityResultLauncher`, suspend the FFI call across the
-  user-confirm round-trip, and resolve once OpenKeychain
-  hands control back. Today we throw — the user has to
-  unlock manually and retry. Add when the workflow
-  actually annoys real users.
 - **Instrumented tests** (Espresso / Compose UI testing).
   Require a green local Studio sync first to anchor
   expectations.
@@ -127,10 +120,12 @@ silently fails on API 30+.
   OpenKeychain isn't installed, or the `<queries>` block in
   the manifest got stripped (check your build outputs).
   Install OpenKeychain and re-launch.
-- **"OpenKeychain needs user interaction"** → expected when
-  the passphrase cache has expired. Open OpenKeychain,
-  unlock the key, return to bypass, retry the action.
-  Long-term, raise the cache TTL.
+- **OpenKeychain pops up unexpectedly mid-action** →
+  expected when the passphrase cache has expired or
+  OpenKeychain wants to confirm a key picker. The 8.2.b.ii
+  async bridge auto-launches it; just confirm and the
+  encrypt/decrypt call resumes automatically. Raise
+  OpenKeychain's cache TTL to make it happen less often.
 - **Gradle sync fails on `cargoNdkBuild`** → `cargo-ndk`
   isn't on `$PATH`, or `ANDROID_NDK_HOME` is unset. See
   the "Build" section above.
@@ -160,7 +155,7 @@ android/
         ├── kotlin/io/bypass/android/
         │   ├── BypassApplication.kt
         │   ├── MainActivity.kt
-        │   ├── crypto/OpenKeychainCrypto.kt
+        │   ├── crypto/{CryptoUiBridge,OpenKeychainCrypto}.kt
         │   ├── repository/BypassRepository.kt
         │   ├── ui/BypassNavHost.kt
         │   ├── ui/theme/Theme.kt

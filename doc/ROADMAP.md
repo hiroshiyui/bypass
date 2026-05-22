@@ -233,7 +233,7 @@ Strategy: native Jetpack Compose UI on top of `bypass-core` exposed via [UniFFI]
 - [x] **8.2.a** App-scoped storage backing the `Storage` trait (`context.filesDir.resolve("store")` via `bypass-ffi::AppStorage`)
 - [x] **8.2.b** OpenKeychain client (AIDL) implementing the Rust `Crypto` callback ([`OpenKeychainCrypto.kt`](../android/app/src/main/kotlin/io/bypass/android/crypto/OpenKeychainCrypto.kt)) — happy-path scope; cold-cache surfaces an actionable `BypassException.Crypto` error
 - [x] **8.2.b** Android Gradle build in CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml) `android-gradle-build` job)
-- [ ] **8.2.b.ii** Async PendingIntent bridge for `RESULT_CODE_USER_INTERACTION_REQUIRED` (auto-resume encrypt / decrypt after OpenKeychain unlocks) — only if real users hit the cold-cache UX often enough
+- [x] **8.2.b.ii** Async PendingIntent bridge for `RESULT_CODE_USER_INTERACTION_REQUIRED` ([`CryptoUiBridge.kt`](../android/app/src/main/kotlin/io/bypass/android/crypto/CryptoUiBridge.kt) + `MainActivity`'s `ActivityResultLauncher`) — auto-launches OpenKeychain on cold-cache, resumes the FFI call when the user confirms; bounded by 5 interaction rounds per op
 - [ ] **8.2.c** Optional `git2` integration for sync (libgit2 with NDK), or defer to manual import/export
 
 ---

@@ -49,7 +49,7 @@ load-bearing design decisions live in
 | Linux CLI (`bypass`) | ✅ Phases 1–6 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions + LAN P2P sync + sync daemon + CI/release packaging) |
 | Firefox & Chrome extension | ✅ Phase 7 MVP shipped (popup + native messaging); 🗓 autofill (7.2.b) |
 | Android library (`bypass-ffi`) | ✅ Phase 8.1 shipped (UniFFI crate + Android CI cross-compile) |
-| Android app | ✅ Phase 8.2.b shipped (Compose UI + OpenKeychain AIDL client); 🗓 async PendingIntent bridge (8.2.b.ii) for cold-cache UX |
+| Android app | ✅ Phase 8.2.b.ii shipped (Compose UI + OpenKeychain AIDL client with async PendingIntent bridge); 🗓 libgit2-on-NDK sync (8.2.c, optional) |
 
 ## Getting started
 
@@ -487,17 +487,18 @@ NavHost + per-screen `ViewModel`, manual DI, Material 3
 theming with dynamic colour on Android 12+. Locked in by
 [ADR-0025](doc/adr/0025-android-ui-architecture.md).
 
-**Status**: Phase 8.2.b shipped. Compose UI on the device,
+**Status**: Phase 8.2.b.ii shipped. Compose UI on the device,
 binding to OpenKeychain's OpenPGP AIDL service for every
 encrypt / decrypt — same platform-delegated-crypto posture
 [ADR-0001](doc/adr/0001-platform-delegated-crypto.md) sets
 for the desktop CLI's `gpg` subprocess. Install
 [OpenKeychain](https://github.com/open-keychain/open-keychain)
 on the device, add at least one OpenPGP key to its keyring,
-then bypass works end-to-end. **Phase 8.2.b.ii** (if real
-users hit the cold-cache UX often enough) adds the async
-PendingIntent bridge so encrypt / decrypt resume after an
-OpenKeychain passphrase prompt without manual retry.
+then bypass works end-to-end. When OpenKeychain needs the
+user to unlock (cold passphrase cache, key picker), the
+8.2.b.ii async `PendingIntent` bridge auto-launches its UI
+and resumes the encrypt / decrypt call when the user
+confirms — no manual retry.
 
 ```sh
 # Open `android/` in Android Studio (Iguana or later).
@@ -509,7 +510,8 @@ cd android/
 
 See [`android/README.md`](android/README.md) for the full
 walk-through, including the OpenKeychain prereqs, the Rust ↔
-Kotlin Gradle integration, and what 8.2.b.ii / 8.2.c would add.
+Kotlin Gradle integration, and what 8.2.c would add (optional
+libgit2-on-NDK device-side sync).
 
 ## Migrating from `pass`
 
