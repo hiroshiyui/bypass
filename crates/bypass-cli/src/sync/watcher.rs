@@ -47,6 +47,16 @@ const GIT_INTERNAL: &str = ".git";
 /// the underlying [`notify::Watcher`]; dropping it stops the
 /// watcher and closes the channel.
 pub fn watch(root: &Path) -> Result<WatcherHandle> {
+    // Canonicalise the watch path. On macOS, `/var/folders/...` is a
+    // symlink to `/private/var/folders/...` and FSEvents delivers
+    // event paths under the resolved location — comparing those to
+    // an un-canonicalised root makes every event look "outside the
+    // tree" and silently dropped. Canonicalising both sides keeps
+    // the prefix-match in `path_is_inside_git_dir` correct.
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("canonicalize watch root {}", root.display()))?;
+
     let (raw_tx, mut raw_rx) = mpsc::unbounded_channel::<notify::Result<notify::Event>>();
     let mut watcher = notify::recommended_watcher(move |res| {
         // Best-effort: if the daemon dropped the receiver, the
@@ -57,14 +67,13 @@ pub fn watch(root: &Path) -> Result<WatcherHandle> {
     .context("create filesystem watcher")?;
 
     watcher
-        .watch(root, RecursiveMode::Recursive)
+        .watch(&root, RecursiveMode::Recursive)
         .with_context(|| format!("watch {}", root.display()))?;
 
     // The downstream debounced channel. Bounded at 1: we never
     // need to queue more than "yes, something happened"; the
     // daemon will drain it.
     let (debounced_tx, debounced_rx) = mpsc::channel::<()>(1);
-    let root = root.to_path_buf();
     let pump = tokio::spawn(async move {
         let mut pending = false;
         let mut deadline: Option<tokio::time::Instant> = None;
