@@ -38,3 +38,4 @@ Process and conventions are defined in
 | 0017 | [Sync-daemon socket location and multi-instance prevention](0017-daemon-socket-location.md) | Accepted |
 | 0018 | [Sync-daemon status protocol and `bypass sync status` output shape](0018-daemon-status-protocol.md) | Accepted |
 | 0019 | [Peer revocation trust semantics: history is final](0019-peer-revocation-trust-semantics.md) | Accepted |
+| 0020 | [Sync-daemon service supervision: systemd user unit + launchd agent](0020-daemon-service-supervision.md) | Accepted |
