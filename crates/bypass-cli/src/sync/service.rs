@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 
 const LAUNCHD_LABEL: &str = "io.bypass.sync";
 
@@ -151,7 +151,7 @@ fn supervisor_op(op: SupervisorOp) -> Result<u8> {
 // but be specific about the supervisor.
 #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
 fn supervisor_op(_op: SupervisorOp) -> Result<u8> {
-    bail!(
+    anyhow::bail!(
         "service supervision is supported on Linux (systemd) and macOS \
          (launchd) only; run `bypass sync daemon` in the foreground \
          instead, or open an issue if you'd like another supervisor"
@@ -165,7 +165,7 @@ fn reload_supervisor() -> Result<()> {
         .status()
         .context("spawn `systemctl --user daemon-reload`")?;
     if !status.success() {
-        bail!(
+        anyhow::bail!(
             "`systemctl --user daemon-reload` failed (exit {})",
             status.code().unwrap_or(-1)
         );
@@ -195,7 +195,7 @@ fn unit_path() -> Result<PathBuf> {
     #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
     {
         let _ = home;
-        bail!(
+        anyhow::bail!(
             "service supervision is supported on Linux (systemd) and macOS \
              (launchd) only"
         )
