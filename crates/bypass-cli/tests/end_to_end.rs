@@ -978,3 +978,125 @@ fn man_emits_a_groff_man_page() {
         .stdout(predicate::str::contains(".TH bypass 1"))
         .stdout(predicate::str::contains(".SH NAME"));
 }
+
+#[test]
+fn messaging_host_responds_to_ls_with_entries_then_clean_eof() {
+    // Spawn `bypass messaging-host`, feed it one length-prefixed JSON
+    // request (`ls`), read the length-prefixed reply, then close
+    // stdin so the host loop exits 0.
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("init")
+        .arg(common::TEST_RECIPIENT)
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "alpha"])
+        .write_stdin("a")
+        .assert()
+        .success();
+
+    let req = br#"{"id":1,"op":"ls"}"#;
+    let mut framed = Vec::with_capacity(4 + req.len());
+    framed.extend_from_slice(&(req.len() as u32).to_le_bytes());
+    framed.extend_from_slice(req);
+
+    let out = bypass(&env)
+        .arg("messaging-host")
+        .write_stdin(framed)
+        .assert()
+        .success();
+    let stdout = &out.get_output().stdout;
+    assert!(
+        stdout.len() > 4,
+        "host wrote {} bytes; expected at least one framed reply",
+        stdout.len()
+    );
+    let len = u32::from_le_bytes([stdout[0], stdout[1], stdout[2], stdout[3]]) as usize;
+    let body = &stdout[4..4 + len];
+    let reply: serde_json::Value = serde_json::from_slice(body).expect("parse host reply");
+    assert_eq!(reply["id"], 1);
+    assert_eq!(reply["ok"], true);
+    let entries = reply["entries"].as_array().expect("entries array");
+    assert!(entries.iter().any(|e| e == "alpha"), "got {entries:?}");
+}
+
+#[test]
+fn messaging_host_returns_ok_false_on_unknown_op() {
+    // A malformed/unknown op surfaces as `{ok:false, error}` with
+    // id=0 (because the host can't safely echo back an id from a
+    // body it couldn't parse — see ADR-0022).
+    let env = common::TestEnv::new();
+    let req = br#"{"id":99,"op":"definitely-not-an-op"}"#;
+    let mut framed = Vec::with_capacity(4 + req.len());
+    framed.extend_from_slice(&(req.len() as u32).to_le_bytes());
+    framed.extend_from_slice(req);
+
+    let out = bypass(&env)
+        .arg("messaging-host")
+        .write_stdin(framed)
+        .assert()
+        .success();
+    let stdout = &out.get_output().stdout;
+    let len = u32::from_le_bytes([stdout[0], stdout[1], stdout[2], stdout[3]]) as usize;
+    let body = &stdout[4..4 + len];
+    let reply: serde_json::Value = serde_json::from_slice(body).unwrap();
+    assert_eq!(reply["id"], 0);
+    assert_eq!(reply["ok"], false);
+    assert!(reply["error"].as_str().is_some());
+}
+
+#[test]
+fn messaging_host_install_writes_firefox_manifest_and_skips_chrome_without_id() {
+    // Without --chrome-id, only the Firefox manifest is written. The
+    // CLI uses $HOME to resolve the install paths; we point both at a
+    // tempdir so the developer's real ~/.mozilla isn't touched.
+    let env = common::TestEnv::new();
+    let home = tempfile::TempDir::new().unwrap();
+    bypass(&env)
+        .args(["messaging-host", "install"])
+        .env("HOME", home.path())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("skipped Chrome"));
+    let firefox = home
+        .path()
+        .join(".mozilla/native-messaging-hosts/io.bypass.host.json");
+    assert!(
+        firefox.exists(),
+        "Firefox manifest not written at {}",
+        firefox.display()
+    );
+    let body = std::fs::read_to_string(&firefox).unwrap();
+    assert!(body.contains("\"name\": \"io.bypass.host\""));
+    assert!(body.contains("allowed_extensions"));
+}
+
+#[test]
+fn messaging_host_install_with_chrome_id_writes_both_browsers() {
+    let env = common::TestEnv::new();
+    let home = tempfile::TempDir::new().unwrap();
+    bypass(&env)
+        .args([
+            "messaging-host",
+            "install",
+            "--chrome-id",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .env("HOME", home.path())
+        .assert()
+        .success();
+    let chrome = home
+        .path()
+        .join(".config/google-chrome/NativeMessagingHosts/io.bypass.host.json");
+    assert!(
+        chrome.exists(),
+        "Chrome manifest missing at {}",
+        chrome.display()
+    );
+    let body = std::fs::read_to_string(&chrome).unwrap();
+    assert!(
+        body.contains("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"),
+        "Chrome manifest doesn't include the supplied id: {body}"
+    );
+}

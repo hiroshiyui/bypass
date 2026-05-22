@@ -7,6 +7,8 @@ mod crypto_gpg;
 mod doctor;
 mod edit;
 mod extensions;
+mod messaging_host;
+mod native_host_install;
 mod storage_fs;
 mod sync;
 mod tree;
@@ -279,6 +281,14 @@ fn dispatch() -> Result<u8> {
             io::stdout().write_all(&buf).context("write man page")?;
             Ok(0)
         }
+        Command::MessagingHost { action } => match action {
+            None => messaging_host::run(),
+            Some(cli::MessagingHostCmd::Install {
+                chrome_id,
+                firefox_id,
+            }) => native_host_install::install(chrome_id, firefox_id),
+            Some(cli::MessagingHostCmd::Uninstall) => native_host_install::uninstall(),
+        },
         Command::ClipboardSet { seconds } => {
             clipboard::run_daemon(seconds)?;
             Ok(0)
