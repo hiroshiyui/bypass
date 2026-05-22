@@ -191,7 +191,7 @@ Actual dependencies as of Phase 5.2:
 - [x] Migration helper from `pass` (no-op — same on-disk format per [ADR-0002](adr/0002-pass-compatible-on-disk-layout.md); see README "Migrating from `pass`")
 - [x] Integration tests covering full CRUD + git flows ([`tests/end_to_end.rs`](../crates/bypass-cli/tests/end_to_end.rs): 26 tests; [`tests/sync_loopback.rs`](../crates/bypass-cli/tests/sync_loopback.rs) + [`tests/sync_daemon.rs`](../crates/bypass-cli/tests/sync_daemon.rs) `#[ignore]`-by-default)
 - [x] CI: build + test on Linux/macOS ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml))
-- [ ] Release packaging (cargo-dist or similar)
+- [x] Release packaging ([`.github/workflows/release.yml`](../.github/workflows/release.yml) + [ADR-0021](adr/0021-release-packaging.md): hand-rolled, four Unix targets on `v*` tags)
 - [x] Sync-daemon service integration (`install` / `uninstall` / `start` / `stop` / `enable` / `disable` / `status`, per [ADR-0020](adr/0020-daemon-service-supervision.md)):
   - [x] Linux: systemd user unit at `~/.config/systemd/user/bypass-sync.service`, managed via `systemctl --user`
   - [x] macOS: launchd agent at `~/Library/LaunchAgents/io.bypass.sync.plist`, managed via `launchctl bootstrap`/`bootout`/`kickstart`/`print`

@@ -39,3 +39,4 @@ Process and conventions are defined in
 | 0018 | [Sync-daemon status protocol and `bypass sync status` output shape](0018-daemon-status-protocol.md) | Accepted |
 | 0019 | [Peer revocation trust semantics: history is final](0019-peer-revocation-trust-semantics.md) | Accepted |
 | 0020 | [Sync-daemon service supervision: systemd user unit + launchd agent](0020-daemon-service-supervision.md) | Accepted |
+| 0021 | [Release packaging: hand-rolled GitHub Actions workflow for v0.1.x](0021-release-packaging.md) | Accepted |

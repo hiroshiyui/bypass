@@ -58,6 +58,24 @@ plus your store directory and recipients.
 
 ### Install (recommended)
 
+If a release tagged `vX.Y.Z` exists on
+[GitHub Releases](https://github.com/hiroshiyui/bypass/releases),
+download the tarball for your platform, verify against
+`SHA256SUMS`, and drop the binary on your `$PATH`:
+
+```sh
+# Example: Linux x86_64
+TARBALL=bypass-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/hiroshiyui/bypass/releases/latest/download/${TARBALL}
+curl -fLO https://github.com/hiroshiyui/bypass/releases/latest/download/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+tar xzf "${TARBALL}"
+install bypass-v0.1.0-x86_64-unknown-linux-gnu/bypass ~/.local/bin/
+bypass doctor
+```
+
+Or build from source — works on every Phase 6 target:
+
 ```sh
 git clone https://github.com/hiroshiyui/bypass.git
 cd bypass
