@@ -1086,9 +1086,18 @@ fn messaging_host_install_with_chrome_id_writes_both_browsers() {
         .env("HOME", home.path())
         .assert()
         .success();
+    // Chrome install paths differ by OS:
+    //   Linux:  $HOME/.config/google-chrome/NativeMessagingHosts/...
+    //   macOS:  $HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts/...
+    #[cfg(target_os = "linux")]
     let chrome = home
         .path()
         .join(".config/google-chrome/NativeMessagingHosts/io.bypass.host.json");
+    #[cfg(target_os = "macos")]
+    let chrome = home
+        .path()
+        .join("Library/Application Support/Google/Chrome/NativeMessagingHosts/io.bypass.host.json");
+
     assert!(
         chrome.exists(),
         "Chrome manifest missing at {}",
