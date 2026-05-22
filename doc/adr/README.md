@@ -43,3 +43,4 @@ Process and conventions are defined in
 | 0022 | [Native-messaging wire protocol between `bypass` and the browser extension](0022-native-messaging-wire-protocol.md) | Accepted |
 | 0023 | [Browser extension architecture: Manifest V3, single TypeScript codebase](0023-browser-extension-architecture.md) | Accepted |
 | 0024 | [Android FFI surface via UniFFI](0024-android-ffi-via-uniffi.md) | Accepted |
+| 0025 | [Android UI architecture: Compose, single Activity, manual DI](0025-android-ui-architecture.md) | Accepted |
