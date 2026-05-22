@@ -84,6 +84,7 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.navigation.compose)
     // UniFFI's Kotlin output uses JNA to talk to libbypass.so.
     implementation(libs.jna) { artifact { type = "aar" } }
