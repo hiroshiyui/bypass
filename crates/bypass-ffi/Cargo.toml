@@ -1,0 +1,32 @@
+[package]
+name = "bypass-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UniFFI surface for bypass (Android/iOS/JVM bindings)."
+
+[lib]
+# `cdylib` produces the shared object Android loads via
+# System.loadLibrary("bypass"). `lib` (rlib) lets the
+# `uniffi-bindgen` binary depend on this crate normally.
+crate-type = ["cdylib", "lib"]
+name = "bypass"
+
+# Separate binary that calls uniffi::uniffi_bindgen_main() so
+# `cargo run --bin uniffi-bindgen` emits Kotlin sources from
+# the macros declared on this crate's public items.
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+bypass-core = { path = "../bypass-core", version = "0.1.0" }
+thiserror = "2"
+uniffi = { version = "0.29", features = ["cli"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
