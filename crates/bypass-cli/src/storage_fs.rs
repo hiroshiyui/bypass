@@ -106,16 +106,26 @@ impl Storage for StorageFs {
         // Atomic write: tempfile in the destination's directory, then rename.
         let parent = abs.parent().unwrap_or_else(|| Path::new("."));
         let tmp_path = unique_tmp_path(parent, abs.file_name().unwrap_or_default());
+        // Atomic create-with-mode: pass `mode = 0o600` to `open(2)` so
+        // the file never exists at umask-default-mode (audit finding E1
+        // — defence-in-depth here; the bytes written are ciphertext, but
+        // the cheap fix applies regardless).
+        #[cfg(unix)]
+        let mut tmp_file = {
+            use std::os::unix::fs::OpenOptionsExt;
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&tmp_path)
+                .map_err(|e| io_err(tmp_path.clone(), e))?
+        };
+        #[cfg(not(unix))]
         let mut tmp_file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&tmp_path)
             .map_err(|e| io_err(tmp_path.clone(), e))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o600));
-        }
         let write_res = tmp_file.write_all(data).and_then(|()| tmp_file.sync_all());
         drop(tmp_file);
         if let Err(e) = write_res {
