@@ -241,7 +241,12 @@ fn dispatch() -> Result<u8> {
             Some(cli::SyncCmd::Identity {
                 action: cli::SyncIdentityCmd::Rotate { confirm },
             }) => sync_identity_rotate(confirm),
-            Some(cli::SyncCmd::Pair { show, enter, name }) => sync_pair(show, enter, name),
+            Some(cli::SyncCmd::Pair {
+                show,
+                enter,
+                name,
+                addr,
+            }) => sync_pair(show, enter, name, addr),
         },
         Command::Audit => audit_cmd(),
         Command::Git { args } => {
@@ -429,12 +434,140 @@ fn sync_identity_rotate(confirm: bool) -> Result<u8> {
     Ok(0)
 }
 
-fn sync_pair(_show: bool, _enter: bool, _name: Option<String>) -> Result<u8> {
-    bail!(
-        "`bypass sync pair` is staged: the PAKE-from-PIN handshake is implemented and \
-         covered by `cargo test -p bypass sync::pairing`, but end-to-end pairing across \
-         devices needs the libp2p transport that lands in sub-milestone 5.2.b."
+fn sync_pair(show: bool, enter: bool, name: Option<String>, addr: Option<String>) -> Result<u8> {
+    if !(show ^ enter) {
+        bail!("specify exactly one of --show or --enter");
+    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("build tokio runtime")?;
+    rt.block_on(async {
+        let identity_path = sync::identity::default_path()?;
+        let kp = sync::identity::load_or_generate(&identity_path)?;
+        let local_name = name.unwrap_or_else(default_device_name);
+        if show {
+            run_pair_show(kp, addr, local_name).await
+        } else {
+            let addr = addr.context(
+                "--enter requires --addr <multiaddr>; ask the other device to share the \
+                 multiaddr printed by `bypass sync pair --show`",
+            )?;
+            run_pair_enter(kp, addr, local_name).await
+        }
+    })
+}
+
+fn default_device_name() -> String {
+    // Try $HOSTNAME first (set on most shells); fall back to a generic
+    // label so pairing doesn't fail just because the env var is unset.
+    std::env::var("HOSTNAME").unwrap_or_else(|_| "bypass-device".to_string())
+}
+
+async fn run_pair_show(
+    kp: libp2p_identity::Keypair,
+    addr: Option<String>,
+    name: String,
+) -> Result<u8> {
+    use libp2p::multiaddr::Protocol;
+    use std::str::FromStr;
+
+    let listen: libp2p::Multiaddr = match addr.as_deref() {
+        Some(s) => libp2p::Multiaddr::from_str(s)
+            .with_context(|| format!("parse --addr {s:?} as multiaddr"))?,
+        None => "/ip4/0.0.0.0/tcp/0".parse().expect("hard-coded multiaddr"),
+    };
+    let transport =
+        sync::libp2p_transport::Libp2pTransport::new(kp.clone(), vec![listen], true).await?;
+    let peer_id = transport.local_peer_id();
+    // Wait for at least one listen addr to register.
+    for _ in 0..50 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if !transport.listen_addrs().is_empty() {
+            break;
+        }
+    }
+    let listen_addrs = transport.listen_addrs();
+    let pin = sync::pairing::generate_pin();
+    println!("PAIRING PIN: {pin}");
+    println!("Multiaddrs to share with the other device:");
+    for a in &listen_addrs {
+        let mut full = a.clone();
+        full.push(Protocol::P2p(peer_id));
+        println!("  {full}");
+    }
+    eprintln!("waiting for the other device…");
+    let paired = sync::pairing::run_show_side(&transport, &pin, &kp, name)
+        .await
+        .map_err(anyhow::Error::new)?;
+    let exit = persist_paired(paired)?;
+    // Give the swarm task a moment to flush the final IdentityAck on
+    // the wire before we drop the runtime. Without this, the response
+    // sits in libp2p's internal queue when the show-side process
+    // exits, and the enter-side sees a closed connection on its last
+    // request.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    Ok(exit)
+}
+
+async fn run_pair_enter(
+    kp: libp2p_identity::Keypair,
+    addr_str: String,
+    name: String,
+) -> Result<u8> {
+    use libp2p::multiaddr::Protocol;
+    use std::str::FromStr;
+
+    let full_addr = libp2p::Multiaddr::from_str(&addr_str)
+        .with_context(|| format!("parse --addr {addr_str:?} as multiaddr"))?;
+    let peer_id = full_addr
+        .iter()
+        .find_map(|p| match p {
+            Protocol::P2p(pid) => Some(pid),
+            _ => None,
+        })
+        .context(
+            "--addr multiaddr must end with /p2p/<peer-id> — copy the full address printed \
+             by the other device's `bypass sync pair --show`",
+        )?;
+    let listen: libp2p::Multiaddr = "/ip4/0.0.0.0/tcp/0".parse().expect("hard-coded multiaddr");
+    let transport =
+        sync::libp2p_transport::Libp2pTransport::new(kp.clone(), vec![listen], true).await?;
+    transport.dial(peer_id, full_addr).await?;
+    // Give the dial → Noise → substream handshake time to settle.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let pin = prompt_for_pin()?;
+    sync::pairing::validate_pin(&pin).map_err(anyhow::Error::new)?;
+    let paired = sync::pairing::run_enter_side(&transport, &peer_id, &pin, &kp, name)
+        .await
+        .map_err(anyhow::Error::new)?;
+    let exit = persist_paired(paired)?;
+    // Same flush window as the show-side — gives libp2p's request-
+    // response a moment to finish its bookkeeping before the runtime
+    // tears the swarm task down.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    Ok(exit)
+}
+
+fn prompt_for_pin() -> Result<String> {
+    use std::io::Write;
+    eprint!("Enter PIN from other device: ");
+    std::io::stderr().flush().ok();
+    let mut buf = String::new();
+    io::stdin().read_line(&mut buf).context("read PIN")?;
+    Ok(buf.trim().to_owned())
+}
+
+fn persist_paired(paired: sync::pairing::PairedPeer) -> Result<u8> {
+    let peers_path = sync::peers::Peers::default_path()?;
+    let mut peers = sync::peers::Peers::load(&peers_path)?;
+    peers.upsert(paired.record.clone());
+    peers.save(&peers_path)?;
+    eprintln!(
+        "paired with {} ({})",
+        paired.remote.name, paired.remote.peer_id
     );
+    Ok(0)
 }
 
 fn audit_cmd() -> Result<u8> {

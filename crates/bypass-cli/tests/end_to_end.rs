@@ -895,13 +895,30 @@ fn sync_identity_rotate_requires_confirm_and_creates_a_key() {
 }
 
 #[test]
-fn sync_pair_show_is_staged_until_5_2_b_lands() {
+fn sync_pair_enter_without_addr_fails_with_helpful_message() {
+    // The show side prints its multiaddr; the enter side must echo it
+    // back via `--addr` (until mDNS-driven discovery lands in 5.2.c).
+    // Confirming the helpful error rather than a generic clap error.
     let env = common::TestEnv::new();
+    let cfg = tempfile::TempDir::new().unwrap();
     bypass(&env)
-        .args(["sync", "pair", "--show"])
+        .args(["sync", "pair", "--enter"])
+        .env("XDG_CONFIG_HOME", cfg.path())
         .assert()
         .failure()
-        .stderr(predicate::str::contains("5.2.b"));
+        .stderr(predicate::str::contains("--enter requires --addr"));
+}
+
+#[test]
+fn sync_pair_with_neither_show_nor_enter_fails() {
+    let env = common::TestEnv::new();
+    let cfg = tempfile::TempDir::new().unwrap();
+    bypass(&env)
+        .args(["sync", "pair"])
+        .env("XDG_CONFIG_HOME", cfg.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--show"));
 }
 
 #[test]

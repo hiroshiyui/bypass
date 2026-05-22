@@ -58,15 +58,50 @@ pub trait Transport: Send + Sync + 'static {
 }
 
 /// One-shot handle the inbound-handler uses to reply.
-#[derive(Debug)]
-pub struct Reply(oneshot::Sender<Vec<u8>>);
+///
+/// Held as an opaque `FnOnce` so different `Transport` implementations
+/// can plumb the reply through whichever channel makes sense to them
+/// (a tokio `oneshot` for `InProcessTransport`, an `mpsc` command back
+/// to the libp2p Swarm task for the real transport, …).
+pub struct Reply {
+    inner: Box<dyn FnOnce(Vec<u8>) + Send + 'static>,
+}
+
+impl std::fmt::Debug for Reply {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Reply").finish_non_exhaustive()
+    }
+}
 
 impl Reply {
+    /// Consume the handle and send the response. After this call the
+    /// reply slot is closed; further attempts to reply are a no-op
+    /// (the type system prevents them).
     pub fn send(self, bytes: Vec<u8>) {
-        // `send` returns Err only if the requester dropped its receiver
-        // (i.e. timed out or cancelled). Nothing for us to do — the
-        // peer will see a timeout on their side.
-        let _ = self.0.send(bytes);
+        (self.inner)(bytes);
+    }
+
+    /// Construct from a tokio oneshot — used by `InProcessTransport`
+    /// (and any other in-process backend whose reply is a oneshot).
+    pub fn from_oneshot(tx: oneshot::Sender<Vec<u8>>) -> Self {
+        Self {
+            inner: Box::new(move |bytes| {
+                // `send` returns Err only if the requester dropped its
+                // receiver. Nothing for us to do — the peer sees a
+                // timeout / disconnect on their side.
+                let _ = tx.send(bytes);
+            }),
+        }
+    }
+
+    /// Construct from an arbitrary closure. Used by `Libp2pTransport`
+    /// to forward the reply through an `mpsc` command back to the
+    /// Swarm task.
+    pub fn from_fn<F>(f: F) -> Self
+    where
+        F: FnOnce(Vec<u8>) + Send + 'static,
+    {
+        Self { inner: Box::new(f) }
     }
 }
 
@@ -166,7 +201,7 @@ impl Transport for InProcessTransport {
             let mut rx = self.inbound.lock().await;
             rx.recv().await.ok_or(InProcessError::Disconnected)?
         };
-        Ok((from, bytes, Reply(reply_tx)))
+        Ok((from, bytes, Reply::from_oneshot(reply_tx)))
     }
 }
 

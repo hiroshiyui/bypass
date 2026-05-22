@@ -17,6 +17,17 @@ arboard = "3"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 git2 = "0.20"
+libp2p = { version = "0.56", features = [
+    "macros",
+    "tokio",
+    "tcp",
+    "noise",
+    "yamux",
+    "request-response",
+    "cbor",
+    "mdns",
+    "identify",
+] }
 libp2p-identity = { version = "0.2", features = ["ed25519", "peerid", "rand"] }
 rand = "0.9"
 rpassword = "7"

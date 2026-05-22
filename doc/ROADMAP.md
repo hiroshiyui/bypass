@@ -147,6 +147,9 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 - [x] Design evaluation + transport / sync-semantics ADRs ([doc/sync-p2p-evaluation.md](sync-p2p-evaluation.md), [ADR-0010](adr/0010-p2p-transport-libp2p.md), [ADR-0011](adr/0011-sync-semantics-hybrid.md))
 - [x] **5.2.a** Device pairing flow (PAKE-from-PIN, peer-ID pinning) — SPAKE2 handshake + identity / `peers.toml` persistence + `Transport` trait + `InProcessTransport` + `bypass sync identity rotate`; `bypass sync pair` clap surface staged for 5.2.b's libp2p wiring
 - [ ] **5.2.b** Sync core: git pack over libp2p, hybrid auto-rebase policy, leak audit on receive
+  - [x] **5.2.b.i** `Libp2pTransport` (real network) + `bypass sync pair --show/--enter` over libp2p ([ADR-0010](adr/0010-p2p-transport-libp2p.md))
+  - [ ] **5.2.b.ii** Sync core: `WantPackFrom` RPC, custom merge driver, leak-audit on receive
+  - [ ] **5.2.b.iii** ADR-0016 (DoS defences: pack-size cap + rate limit) + bootstrap-protocol verification + two-process integration tests
 - [ ] **5.2.c** Daemon mode + `bypass sync status`
 - [ ] **5.2.d** Two-peer integration tests + README rewrite
 

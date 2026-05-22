@@ -217,6 +217,12 @@ pub enum SyncCmd {
         /// peer's `peers.toml`. Defaults to the system hostname.
         #[arg(long)]
         name: Option<String>,
+        /// Multiaddr to listen on (`--show`) or to dial (`--enter`).
+        /// Show-side defaults to `/ip4/0.0.0.0/tcp/0`. Enter-side
+        /// requires the multiaddr printed by the show-side until
+        /// mDNS-driven discovery lands in 5.2.c.
+        #[arg(long)]
+        addr: Option<String>,
     },
 
     /// Manage this device's libp2p identity key.
