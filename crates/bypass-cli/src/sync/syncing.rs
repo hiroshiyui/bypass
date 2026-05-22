@@ -14,11 +14,13 @@
 //! transport, peer discovery, and `peers.toml` iteration are the
 //! caller's concern.
 //!
-//! ## Out of scope here
-//! - DoS defences (pack-size cap, per-peer rate limit) — ADR-0016 lands
-//!   in 5.2.b.iii; the constants are stubbed here so callers can wire
-//!   them up later without an API break.
-//! - Multiaddr storage / mDNS-driven discovery — 5.2.c.
+//! DoS defences ([ADR-0016](../../../../doc/adr/0016-sync-dos-defences.md)):
+//! the 50 MB pack-size cap is enforced symmetrically here (see
+//! [`MAX_PACK_BYTES`]); the per-peer rate limit lives in
+//! [`super::ratelimit`] and is woven in by the caller (one-shot
+//! `bypass sync` or the daemon in 5.2.c).
+//!
+//! Multiaddr storage and mDNS-driven discovery arrive with 5.2.c.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -32,9 +34,10 @@ use crate::audit::{self, LeakIssue};
 use super::transport::Transport;
 use super::wire::{self, WireBody};
 
-/// Maximum pack size we accept on the wire. ADR-0016 will formalise
-/// this in 5.2.b.iii. 50 MB is comfortable for a password store
-/// (entries are at most a few KB and history compresses well).
+/// Maximum pack size we accept on the wire per
+/// [ADR-0016](../../../../doc/adr/0016-sync-dos-defences.md). 50 MB is
+/// comfortable for a password store (entries are at most a few KB and
+/// history compresses well); larger stores bootstrap via a git remote.
 pub const MAX_PACK_BYTES: usize = 50 * 1024 * 1024;
 
 /// Outcome of a single peer sync.
@@ -153,7 +156,24 @@ pub fn serve_want_pack_from(
     local_head: Option<&str>,
     peer_head_seen: Option<&str>,
 ) -> Vec<u8> {
+    serve_want_pack_from_capped(root, local_head, peer_head_seen, MAX_PACK_BYTES)
+}
+
+/// Same as [`serve_want_pack_from`] but with a caller-supplied cap.
+/// Exists so tests can exercise the refusal path without synthesising
+/// a 50 MB pack.
+fn serve_want_pack_from_capped(
+    root: &Path,
+    local_head: Option<&str>,
+    peer_head_seen: Option<&str>,
+    cap: usize,
+) -> Vec<u8> {
     match build_pack(root, local_head, peer_head_seen) {
+        Ok(bytes) if bytes.len() > cap => wire::encode(&wire::err(format!(
+            "pack of {} bytes exceeds {cap}-byte cap (ADR-0016); \
+             bootstrap via a git remote first, then resume peer sync",
+            bytes.len()
+        ))),
         Ok(bytes) => wire::encode(&wire::pack(local_head.map(str::to_owned), bytes)),
         Err(e) => wire::encode(&wire::err(format!("build pack: {e}"))),
     }
@@ -575,6 +595,23 @@ mod tests {
                 assert!(!bytes.is_empty());
             }
             other => panic!("expected Pack, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn serve_refuses_when_pack_exceeds_cap() {
+        let src = init_repo("src", "src@s");
+        commit_entry(src.path(), "x.gpg", b"x");
+        let src_head = head(src.path());
+        // Use a tiny cap (10 bytes) so even a minimal real pack trips it.
+        let reply_bytes = serve_want_pack_from_capped(src.path(), Some(&src_head), None, 10);
+        let reply = wire::decode(&reply_bytes).unwrap();
+        match reply.body {
+            WireBody::Err { reason } => {
+                assert!(reason.contains("cap"), "{reason}");
+                assert!(reason.contains("ADR-0016"), "{reason}");
+            }
+            other => panic!("expected Err, got {other:?}"),
         }
     }
 

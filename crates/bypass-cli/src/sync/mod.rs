@@ -31,6 +31,7 @@ pub mod libp2p_transport;
 pub mod merge_driver;
 pub mod pairing;
 pub mod peers;
+pub mod ratelimit;
 pub mod syncing;
 pub mod transport;
 pub mod wire;

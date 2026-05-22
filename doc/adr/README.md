@@ -34,3 +34,4 @@ Process and conventions are defined in
 | 0013 | [Sync testability: a `Transport` trait + in-process fake](0013-sync-transport-trait.md) | Accepted |
 | 0014 | [Sync metadata: git commit fields only, no sidecars, no wall-clock ordering](0014-sync-metadata-and-ordering.md) | Accepted |
 | 0015 | [Device identity key: Ed25519 in `$XDG_CONFIG_HOME/bypass/identity.key`](0015-device-identity-key.md) | Accepted |
+| 0016 | [DoS defences for incoming sync: pack-size cap + per-peer rate limit](0016-sync-dos-defences.md) | Accepted |

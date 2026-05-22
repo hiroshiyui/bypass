@@ -400,12 +400,12 @@ should be resolved and whether it warrants its own ADR.
    from the revoked peer remain trusted. The UX is sub-milestone
    detail; the trust question is **ADR-worthy in 5.2.c planning**.
 
-8. **DoS defences for incoming sync.** The threat model names
-   the risk but the eval doc doesn't commit to concrete numbers:
-   max pack size, max refs per fetch, per-peer sync-rate limit,
-   per-peer disk quota. The *posture* (refuse-by-default with
-   explicit caps) parallels [ADR-0009](adr/0009-leak-check-before-push.md).
-   **ADR candidate in 5.2.b planning.**
+8. **DoS defences for incoming sync** — **resolved** in
+   [ADR-0016](adr/0016-sync-dos-defences.md): 50 MB pack-size
+   cap enforced symmetrically (refuse to send and refuse to
+   receive); 3-attempt / 60-second per-peer rate-limit window
+   mirroring [ADR-0012](adr/0012-pake-spake2.md)'s PAKE
+   throttle.
 
 9. **Daemon socket location and multi-instance prevention.**
    `$XDG_RUNTIME_DIR/bypass-sync.sock` is the natural Linux home;
@@ -419,10 +419,15 @@ should be resolved and whether it warrants its own ADR.
     auto-merge audit trail (ADR-0011's "warn within last N
     seconds") needs a concrete UI here. **5.2.c planning detail.**
 
-11. **First-sync (bootstrap) protocol.** Two paired devices
-    establish trust via PAKE; the very first git fetch then
-    transfers… what? A full pack? Negotiated `have`/`want`? Is
-    there a disk-budget guard? **5.2.b planning detail.**
+11. **First-sync (bootstrap) protocol** — **resolved** in
+    [ADR-0016](adr/0016-sync-dos-defences.md): the same
+    `WantPackFrom { local_head: None, peer_head_seen: None }`
+    shape is the bootstrap — no separate message type. The
+    responder packs everything reachable from its HEAD; the
+    initiator fast-forwards. The same 50 MB pack-size cap
+    serves as the per-clone disk-budget guard, with the
+    documented escape hatch of bootstrapping via a git remote
+    first.
 
 12. **Rebase tie-breaker for symmetric divergence** —
     **resolved** in [ADR-0014](adr/0014-sync-metadata-and-ordering.md):

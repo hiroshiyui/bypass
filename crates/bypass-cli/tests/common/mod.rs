@@ -13,6 +13,9 @@ use std::process::Command;
 use tempfile::TempDir;
 
 pub const TEST_USER_ID: &str = "bypass-it <bypass-it@example.invalid>";
+// Not every integration-test binary needs this constant (each `tests/*.rs`
+// is its own crate that pulls in `common`), so silence dead-code per-test.
+#[allow(dead_code)]
 pub const TEST_RECIPIENT: &str = "bypass-it@example.invalid";
 
 pub struct TestEnv {
