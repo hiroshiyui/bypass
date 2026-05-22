@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <string name="app_name">bypass</string>
+    <string name="init_title">Initialise store</string>
+    <string name="init_recipient_label">OpenPGP recipient (fingerprint or email)</string>
+    <string name="init_button">Initialise</string>
+    <string name="list_title">bypass</string>
+    <string name="list_search_hint">Search…</string>
+    <string name="list_empty">No entries yet. Use the + button to add one.</string>
+    <string name="insert_title">New entry</string>
+    <string name="insert_path_label">Path (e.g. email/work)</string>
+    <string name="insert_plaintext_label">Plaintext</string>
+    <string name="insert_save">Save</string>
+    <string name="show_title">Entry</string>
+    <string name="show_copy">Copy</string>
+    <string name="show_delete">Delete</string>
+    <string name="generate_title">Generate password</string>
+    <string name="generate_path_label">Path</string>
+    <string name="generate_length_label">Length: %1$d</string>
+    <string name="generate_symbols">Include symbols</string>
+    <string name="generate_button">Generate &amp; save</string>
+</resources>

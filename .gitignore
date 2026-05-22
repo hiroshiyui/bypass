@@ -3,3 +3,8 @@
 /extension/dist/
 /extension/node_modules/
 /extension/bypass-extension-*.zip
+# Android local toolchain state (the android/ subproject ships its
+# own .gitignore for build outputs; the root tracks the per-machine
+# bits Studio drops in unexpected places).
+/android/local.properties
+/android/.idea/

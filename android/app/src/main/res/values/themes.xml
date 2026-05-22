@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        Base theme for the splash / pre-Compose window. The actual
+        UI palette is applied by Compose's `BypassTheme` once the
+        Activity calls `setContent { … }`. Material3 + edge-to-edge
+        + dynamic-colour-on-A12+ behaviour all live in Theme.kt.
+    -->
+    <style name="Theme.Bypass" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+    </style>
+
+</resources>
