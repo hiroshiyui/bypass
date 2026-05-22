@@ -266,7 +266,7 @@ fn render_unit(exe: &Path) -> String {
          ExecStart={exe} sync daemon\n\
          Restart=on-failure\n\
          RestartSec=10\n\
-         Environment=RUST_LOG=info\n\
+         Environment=RUST_LOG=warn\n\
          \n\
          [Install]\n\
          WantedBy=default.target\n",
