@@ -394,11 +394,15 @@ should be resolved and whether it warrants its own ADR.
    `bypass sync identity rotate --confirm` clears `peers.toml`
    (re-pair every device); no automatic rotation.
 
-7. **Peer revocation UX and trust semantics.** "I lost a device,
-   untrust it" needs both a CLI surface (`bypass sync peer rm
-   <name>` or similar) and a decision on whether *prior* commits
-   from the revoked peer remain trusted. The UX is sub-milestone
-   detail; the trust question is **ADR-worthy in 5.2.c planning**.
+7. **Peer revocation UX and trust semantics** — **resolved** in
+   [ADR-0019](adr/0019-peer-revocation-trust-semantics.md):
+   `bypass sync peer rm <name> --yes` removes the pin from
+   `peers.toml`; the daemon hot-reloads on the next inbound
+   request and refuses subsequent `WantPackFrom` from the revoked
+   peer-id. Prior commits authored by the revoked peer are not
+   rewritten, consistent with
+   [ADR-0014](adr/0014-sync-metadata-and-ordering.md)'s
+   no-cryptographic-attribution model.
 
 8. **DoS defences for incoming sync** — **resolved** in
    [ADR-0016](adr/0016-sync-dos-defences.md): 50 MB pack-size
@@ -407,17 +411,23 @@ should be resolved and whether it warrants its own ADR.
    mirroring [ADR-0012](adr/0012-pake-spake2.md)'s PAKE
    throttle.
 
-9. **Daemon socket location and multi-instance prevention.**
-   `$XDG_RUNTIME_DIR/bypass-sync.sock` is the natural Linux home;
-   macOS has no `XDG_RUNTIME_DIR` and needs a fallback
-   (e.g. `$TMPDIR/bypass-sync.sock`). Multi-instance
-   prevention: bind-or-error on the socket, or a pidfile? **5.2.c
-   planning detail.**
+9. **Daemon socket location and multi-instance prevention** —
+   **resolved** in [ADR-0017](adr/0017-daemon-socket-location.md):
+   `$XDG_RUNTIME_DIR/bypass-sync.sock` on Linux with a documented
+   `$TMPDIR/bypass-<uid>-sync.sock` → `/tmp/` fallback chain on
+   macOS; `0600` perms; probe-then-bind multi-instance check
+   (no pidfile).
 
-10. **`bypass sync status` output shape.** Connected peers? Most
-    recent sync timestamp per peer? Pending conflicts list? The
-    auto-merge audit trail (ADR-0011's "warn within last N
-    seconds") needs a concrete UI here. **5.2.c planning detail.**
+10. **`bypass sync status` output shape** — **resolved** in
+    [ADR-0018](adr/0018-daemon-status-protocol.md):
+    newline-delimited JSON over the ADR-0017 socket; a single
+    `status` op returns `{local_peer_id, listening_addrs, peers:
+    [{name, peer_id, discovered, last_sync_action,
+    last_sync_unix}]}`. `--json` for scripts, fixed-width table
+    by default. No "pending conflicts" today — ADR-0011's
+    auto-rebase resolves opaque-blob conflicts via the merge
+    driver, so there are none to surface; a manual-resolution
+    fallback would extend this protocol later.
 
 11. **First-sync (bootstrap) protocol** — **resolved** in
     [ADR-0016](adr/0016-sync-dos-defences.md): the same
