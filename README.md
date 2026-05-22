@@ -146,6 +146,26 @@ bypass otp -c service
 bypass ext my-extension --some-flag
 ```
 
+### Shell integration
+
+`bypass` emits shell completion scripts and a `bypass(1)` man page
+on demand — redirect each to wherever your distribution expects
+the file:
+
+```sh
+# Shell completions (pick the one for your shell)
+bypass completion bash       > ~/.local/share/bash-completion/completions/bypass
+bypass completion zsh        > ~/.zsh/completion/_bypass
+bypass completion fish       > ~/.config/fish/completions/bypass.fish
+bypass completion powershell > $PROFILE.CurrentUserAllHosts
+bypass completion elvish     > ~/.config/elvish/lib/bypass.elv
+
+# Man page (system-wide; needs sudo on most distros)
+bypass man | sudo tee /usr/local/share/man/man1/bypass.1 > /dev/null
+sudo mandb     # or `makewhatis`, depending on the distro
+man bypass
+```
+
 ## Syncing
 
 `bypass` has **two** ways to keep multiple devices in sync. They

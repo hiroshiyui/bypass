@@ -4,6 +4,7 @@
 //! in later milestones; this module only declares the surface.
 
 use clap::{Parser, Subcommand};
+pub use clap_complete::Shell;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -188,6 +189,20 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+
+    /// Emit a shell completion script for `bypass` to stdout. Redirect
+    /// to wherever your shell expects completion files, e.g.
+    /// `bypass completion bash > /etc/bash_completion.d/bypass`.
+    Completion {
+        /// Target shell. One of: `bash`, `zsh`, `fish`, `powershell`,
+        /// `elvish`.
+        shell: Shell,
+    },
+
+    /// Emit the `bypass(1)` man page in groff/troff format to stdout.
+    /// Redirect to your `man1/` directory, e.g.
+    /// `bypass man > /usr/local/share/man/man1/bypass.1`.
+    Man,
 
     /// Internal: clipboard auto-clear daemon. Spawned by `show -c` /
     /// `generate -c` via re-exec. Reads the password to install from

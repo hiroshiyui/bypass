@@ -235,6 +235,19 @@ fn dispatch() -> Result<u8> {
             eprintln!("copied {from_entry} to {to_entry}");
             Ok(0)
         }
+        Command::Completion { shell } => {
+            let mut cmd = <cli::Cli as clap::CommandFactory>::command();
+            clap_complete::generate(shell, &mut cmd, "bypass", &mut io::stdout());
+            Ok(0)
+        }
+        Command::Man => {
+            let cmd = <cli::Cli as clap::CommandFactory>::command();
+            let man = clap_mangen::Man::new(cmd);
+            let mut buf: Vec<u8> = Vec::new();
+            man.render(&mut buf).context("render man page")?;
+            io::stdout().write_all(&buf).context("write man page")?;
+            Ok(0)
+        }
         Command::ClipboardSet { seconds } => {
             clipboard::run_daemon(seconds)?;
             Ok(0)

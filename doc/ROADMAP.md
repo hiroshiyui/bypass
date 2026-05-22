@@ -186,8 +186,8 @@ Actual dependencies as of Phase 5.2:
 
 ## Phase 6 — Polish
 
-- [ ] `bypass completion <shell>` — generate shell completions
-- [ ] Man page generation
+- [x] `bypass completion <shell>` — generate shell completions
+- [x] Man page generation (`bypass man`)
 - [ ] Migration helper from `pass` (should be a no-op if format matches)
 - [ ] Integration tests covering full CRUD + git flows
 - [ ] CI: build + test on Linux/macOS

@@ -949,3 +949,32 @@ fn edit_with_unchanged_buffer_reports_no_changes() {
         .success()
         .stdout(predicate::str::starts_with("original"));
 }
+
+#[test]
+fn completion_emits_a_shell_specific_script() {
+    // No env required: completion doesn't touch GNUPGHOME or the
+    // store. We still set both to keep test parallelism predictable.
+    let env = common::TestEnv::new();
+    for (shell, marker) in [
+        ("bash", "_bypass"),
+        ("zsh", "_bypass"),
+        ("fish", "complete -c bypass"),
+    ] {
+        bypass(&env)
+            .args(["completion", shell])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(marker));
+    }
+}
+
+#[test]
+fn man_emits_a_groff_man_page() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .arg("man")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".TH bypass 1"))
+        .stdout(predicate::str::contains(".SH NAME"));
+}
