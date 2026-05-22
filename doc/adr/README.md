@@ -35,3 +35,6 @@ Process and conventions are defined in
 | 0014 | [Sync metadata: git commit fields only, no sidecars, no wall-clock ordering](0014-sync-metadata-and-ordering.md) | Accepted |
 | 0015 | [Device identity key: Ed25519 in `$XDG_CONFIG_HOME/bypass/identity.key`](0015-device-identity-key.md) | Accepted |
 | 0016 | [DoS defences for incoming sync: pack-size cap + per-peer rate limit](0016-sync-dos-defences.md) | Accepted |
+| 0017 | [Sync-daemon socket location and multi-instance prevention](0017-daemon-socket-location.md) | Accepted |
+| 0018 | [Sync-daemon status protocol and `bypass sync status` output shape](0018-daemon-status-protocol.md) | Accepted |
+| 0019 | [Peer revocation trust semantics: history is final](0019-peer-revocation-trust-semantics.md) | Accepted |
