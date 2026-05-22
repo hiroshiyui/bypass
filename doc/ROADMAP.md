@@ -22,29 +22,58 @@ bypass/
     ├── bypass-core/                 # platform-agnostic library
     │   └── src/
     │       ├── lib.rs
-    │       ├── crypto.rs            # Crypto trait + SecretBytes
+    │       ├── crypto.rs            # Crypto trait + SecretBytes + KeyId
     │       ├── storage.rs           # Storage trait
-    │       ├── vcs.rs               # VersionControl trait (optional impl)
+    │       ├── vcs.rs               # VersionControl trait (+ NoVcs)
     │       ├── path.rs              # RelPath newtype, traversal-safe
     │       ├── gpg_id.rs            # walk-up .gpg-id recipient resolution
-    │       ├── store.rs             # Store<C,S,V> orchestrator
+    │       ├── store.rs             # Store<C,S,V> orchestrator + canonical .gitattributes
     │       ├── entry.rs             # multi-line entry parsing
     │       ├── generate.rs          # password generation
-    │       └── otp.rs               # TOTP from otpauth:// URIs
+    │       ├── otp.rs               # TOTP from otpauth:// URIs
+    │       └── error.rs             # shared error scaffolding
     └── bypass-cli/                  # Linux binary `bypass`
-        └── src/
-            ├── main.rs              # clap dispatch
-            ├── cli.rs               # clap derive command enum
-            ├── crypto_gpg.rs        # impl Crypto via `gpg` subprocess
-            ├── storage_fs.rs        # impl Storage on local FS
-            ├── vcs_git2.rs          # impl VersionControl via git2
-            ├── clipboard.rs         # arboard + auto-clear
-            └── messaging_host.rs    # `bypass messaging-host` subcommand
+        ├── src/
+        │   ├── main.rs              # clap dispatch
+        │   ├── cli.rs               # clap derive command enum
+        │   ├── crypto_gpg.rs        # impl Crypto via `gpg` subprocess
+        │   ├── storage_fs.rs        # impl Storage on local FS (shred-on-remove)
+        │   ├── vcs_git2.rs          # impl VersionControl via libgit2
+        │   ├── audit.rs             # leak-check audit (ADR-0009)
+        │   ├── clipboard.rs         # arboard + auto-clear daemon
+        │   ├── doctor.rs            # `bypass doctor` env probe
+        │   ├── edit.rs              # `bypass edit` tempfile + $EDITOR
+        │   ├── extensions.rs        # pass-style extension dispatch
+        │   ├── tree.rs              # ASCII tree renderer for `bypass ls`
+        │   └── sync/                # Phase 5.2 LAN P2P sync
+        │       ├── mod.rs
+        │       ├── identity.rs      # Ed25519 identity key (ADR-0015)
+        │       ├── peers.rs         # peers.toml pinned-peer table (ADR-0012)
+        │       ├── transport.rs     # Transport trait + InProcessTransport (ADR-0013)
+        │       ├── libp2p_transport.rs  # real libp2p Transport (ADR-0010)
+        │       ├── pairing.rs       # SPAKE2 PAKE-from-PIN (ADR-0012)
+        │       ├── wire.rs          # WantPackFrom / Pack / Err wire types
+        │       ├── syncing.rs       # pack build/ingest + reconcile (ADR-0011/0014/0016)
+        │       ├── merge_driver.rs  # `bypass-take-theirs` (ADR-0011)
+        │       ├── ratelimit.rs     # per-peer attempt window (ADR-0016)
+        │       ├── socket.rs        # daemon status socket (ADR-0017/0018)
+        │       ├── watcher.rs       # notify-based fs watcher
+        │       └── daemon.rs        # `bypass sync daemon` main loop
+        └── tests/
+            ├── common/mod.rs        # throwaway GNUPGHOME + TestEnv helper
+            ├── end_to_end.rs        # default-suite integration tests
+            ├── sync_loopback.rs     # #[ignore]: two-process pair via libp2p
+            └── sync_daemon.rs       # #[ignore]: daemon lifecycle + mDNS round-trip
 ```
 
 Reserved for later phases: `crates/bypass-ffi/` (UniFFI surface for Android) and `extension/` (TypeScript WebExtension for Firefox & Chrome).
 
-Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypass-core`; `clap`, `git2`, `arboard`, `anyhow`, `serde_json`, `dirs` in `bypass-cli`.
+Actual dependencies as of Phase 5.2:
+- `bypass-core`: `rand`, `totp-rs`, `thiserror`, `zeroize` (portability rule
+  forbids `git2`, `arboard`, `libp2p`, `tokio`, `notify`, or any subprocess crate).
+- `bypass-cli`: `anyhow`, `arboard`, `clap`, `dirs`, `git2`, `libp2p` (+ `libp2p-identity`),
+  `notify`, `rand`, `rpassword`, `serde`, `serde_json`, `sha2`, `spake2`,
+  `thiserror`, `tokio`, `toml`.
 
 ---
 
@@ -146,7 +175,7 @@ Core dependencies (planned): `rand`, `totp-rs`, `thiserror`, `zeroize` in `bypas
 ### Milestone 5.2: LAN P2P sync (stretch)
 - [x] Design evaluation + transport / sync-semantics ADRs ([doc/sync-p2p-evaluation.md](sync-p2p-evaluation.md), [ADR-0010](adr/0010-p2p-transport-libp2p.md), [ADR-0011](adr/0011-sync-semantics-hybrid.md))
 - [x] **5.2.a** Device pairing flow (PAKE-from-PIN, peer-ID pinning) — SPAKE2 handshake + identity / `peers.toml` persistence + `Transport` trait + `InProcessTransport` + `bypass sync identity rotate`; `bypass sync pair` clap surface staged for 5.2.b's libp2p wiring
-- [ ] **5.2.b** Sync core: git pack over libp2p, hybrid auto-rebase policy, leak audit on receive
+- [x] **5.2.b** Sync core: git pack over libp2p, hybrid auto-rebase policy, leak audit on receive
   - [x] **5.2.b.i** `Libp2pTransport` (real network) + `bypass sync pair --show/--enter` over libp2p ([ADR-0010](adr/0010-p2p-transport-libp2p.md))
   - [x] **5.2.b.ii** Sync core: `WantPackFrom` RPC, custom merge driver, leak-audit on receive
   - [x] **5.2.b.iii** ADR-0016 (DoS defences: pack-size cap + rate limit) + bootstrap-protocol verification + two-process integration tests
