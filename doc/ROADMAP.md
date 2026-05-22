@@ -228,11 +228,12 @@ Strategy: native Jetpack Compose UI on top of `bypass-core` exposed via [UniFFI]
 - [x] Expose `Store` operations through generated Kotlin bindings (`cargo run -p bypass-ffi --bin uniffi-bindgen` emits at build time; the Android Gradle project in 8.2 invokes it)
 - [x] CI: build for `aarch64-linux-android` and `armv7-linux-androideabi` ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml) `android-ffi` job)
 
-### Milestone 8.2: Android UI
-- [ ] Compose app shell, Material 3 theming
-- [ ] OpenKeychain client (AIDL) implementing the Rust `Crypto` callback
-- [ ] App-scoped storage backing the `Storage` trait
-- [ ] Optional `git2` integration for sync (libgit2 with NDK), or defer to manual import/export
+### Milestone 8.2: Android UI ([ADR-0025](adr/0025-android-ui-architecture.md))
+- [x] **8.2.a** Compose app shell, Material 3 theming ([`android/`](../android/))
+- [x] **8.2.a** App-scoped storage backing the `Storage` trait (`context.filesDir.resolve("store")` via `bypass-ffi::AppStorage`)
+- [ ] **8.2.b** OpenKeychain client (AIDL) implementing the Rust `Crypto` callback — `StubCrypto` placeholder in 8.2.a throws on every call
+- [ ] **8.2.b** Android Gradle build in CI (deferred per ADR-0025 until the first local Studio sync verifies the project)
+- [ ] **8.2.c** Optional `git2` integration for sync (libgit2 with NDK), or defer to manual import/export
 
 ---
 

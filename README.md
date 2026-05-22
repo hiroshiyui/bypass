@@ -48,7 +48,8 @@ load-bearing design decisions live in
 |---|---|
 | Linux CLI (`bypass`) | ✅ Phases 1–6 shipped (CRUD + git + generation + clipboard + structured fields + TOTP + extensions + LAN P2P sync + sync daemon + CI/release packaging) |
 | Firefox & Chrome extension | ✅ Phase 7 MVP shipped (popup + native messaging); 🗓 autofill (7.2.b) |
-| Android library (`bypass-ffi`) | ✅ Phase 8.1 shipped (UniFFI crate + Android CI cross-compile); 🗓 Compose UI + OpenKeychain client (8.2) |
+| Android library (`bypass-ffi`) | ✅ Phase 8.1 shipped (UniFFI crate + Android CI cross-compile) |
+| Android app | ✅ Phase 8.2.a shipped (Compose UI scaffold + stub Crypto); 🗓 OpenKeychain client (8.2.b) |
 
 ## Getting started
 
@@ -458,10 +459,9 @@ OpenKeychain — same platform-delegated-crypto posture
 [ADR-0001](doc/adr/0001-platform-delegated-crypto.md) sets
 for every frontend.
 
-Phase 8.1 (this slice) ships the Rust crate + CI
-cross-compile for `aarch64-linux-android` and
-`armv7-linux-androideabi`. Phase 8.2 will add the actual
-Gradle / Compose app on top.
+Phase 8.1 ships the Rust crate + CI cross-compile for
+`aarch64-linux-android` and `armv7-linux-androideabi`.
+Phase 8.2.a builds the Compose app on top (see below).
 
 ```sh
 # Local exploration (NDK required for the cross-compile):
@@ -470,13 +470,42 @@ cargo install --locked cargo-ndk
 cargo ndk -t arm64-v8a -t armeabi-v7a build --release -p bypass-ffi
 
 # Emit Kotlin bindings to a tempdir (the Android Gradle build
-# in 8.2 will run this as a build step):
+# under android/ runs this as a build step):
 cargo run -p bypass-ffi --bin uniffi-bindgen -- \
     generate \
     --library target/debug/libbypass.so \
     --language kotlin \
     --out-dir /tmp/bypass-kotlin
 ```
+
+## Android app
+
+[`android/`](android/) hosts the Gradle / Compose / Kotlin
+app on top of the FFI crate. Manifest V… well, Manifest is
+Android's own thing — single `MainActivity` + Compose
+NavHost + per-screen `ViewModel`, manual DI, Material 3
+theming with dynamic colour on Android 12+. Locked in by
+[ADR-0025](doc/adr/0025-android-ui-architecture.md).
+
+**Status**: Phase 8.2.a shipped a UI scaffold with a stub
+`Crypto`. App launches, Init / List / Find / Rm flows work
+end-to-end. Insert / Show / Generate surface
+`BypassException.Crypto("…lands in 8.2.b…")` in a Snackbar
+— proving the FFI round-trip is wired without needing
+OpenKeychain installed yet. **Phase 8.2.b** replaces the
+stub with an OpenKeychain AIDL client.
+
+```sh
+# Open `android/` in Android Studio (Iguana or later).
+# Or from the CLI, once you have cargo-ndk + the Android NDK:
+cd android/
+./gradlew assembleDebug              # builds the debug APK
+./gradlew installDebug               # installs to a connected device / emulator
+```
+
+See [`android/README.md`](android/README.md) for the full
+walk-through, including the Rust ↔ Kotlin Gradle integration
+and the 8.2.a → 8.2.b → 8.2.c roadmap.
 
 ## Migrating from `pass`
 
