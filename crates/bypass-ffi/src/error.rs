@@ -22,23 +22,23 @@ pub enum BypassError {
     #[error("entry already exists: {path}")]
     AlreadyExists { path: String },
 
-    #[error("invalid entry path: {message}")]
-    InvalidPath { message: String },
+    #[error("invalid entry path: {reason}")]
+    InvalidPath { reason: String },
 
     #[error("store not initialised; call `init` first")]
     NotInitialized,
 
-    #[error("malformed .gpg-id: {message}")]
-    GpgIdMalformed { message: String },
+    #[error("malformed .gpg-id: {reason}")]
+    GpgIdMalformed { reason: String },
 
-    #[error("crypto error: {message}")]
-    Crypto { message: String },
+    #[error("crypto error: {reason}")]
+    Crypto { reason: String },
 
-    #[error("storage error: {message}")]
-    Storage { message: String },
+    #[error("storage error: {reason}")]
+    Storage { reason: String },
 
-    #[error("internal error: {message}")]
-    Internal { message: String },
+    #[error("internal error: {reason}")]
+    Internal { reason: String },
 }
 
 impl<CE, SE, VE> From<StoreError<CE, SE, VE>> for BypassError
@@ -53,16 +53,16 @@ where
             StoreError::AlreadyExists(path) => Self::AlreadyExists { path },
             StoreError::NotInitialized => Self::NotInitialized,
             StoreError::GpgIdMalformed(m) => Self::GpgIdMalformed {
-                message: m.to_owned(),
+                reason: m.to_owned(),
             },
             StoreError::Crypto(source) => Self::Crypto {
-                message: source.to_string(),
+                reason: source.to_string(),
             },
             StoreError::Storage(source) => Self::Storage {
-                message: source.to_string(),
+                reason: source.to_string(),
             },
             StoreError::Vcs(source) => Self::Internal {
-                message: format!("vcs: {source}"),
+                reason: format!("vcs: {source}"),
             },
         }
     }
@@ -71,7 +71,7 @@ where
 impl From<bypass_core::error::Error> for BypassError {
     fn from(e: bypass_core::error::Error) -> Self {
         Self::InvalidPath {
-            message: e.to_string(),
+            reason: e.to_string(),
         }
     }
 }
@@ -112,6 +112,6 @@ mod tests {
     fn from_invalid_path() {
         let e = bypass_core::error::Error::InvalidPath("contains NUL".into());
         let mapped: BypassError = e.into();
-        assert!(matches!(mapped, BypassError::InvalidPath { message } if message.contains("NUL")));
+        assert!(matches!(mapped, BypassError::InvalidPath { reason } if reason.contains("NUL")));
     }
 }

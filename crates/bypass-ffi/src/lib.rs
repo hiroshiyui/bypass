@@ -111,7 +111,7 @@ impl BypassStore {
         let plaintext = self.lock()?.show(&entry)?;
         let parsed = bypass_core::entry::Entry::parse(plaintext.as_slice()).map_err(|e| {
             BypassError::Internal {
-                message: format!("parse entry body: {e}"),
+                reason: format!("parse entry body: {e}"),
             }
         })?;
         parsed
@@ -188,10 +188,10 @@ impl BypassStore {
         let plaintext = self.lock()?.show(&entry)?;
         let text =
             std::str::from_utf8(plaintext.as_slice()).map_err(|_| BypassError::Internal {
-                message: "entry is not valid UTF-8".into(),
+                reason: "entry is not valid UTF-8".into(),
             })?;
         bypass_core::otp::current_code(text).map_err(|e| BypassError::Internal {
-            message: format!("compute TOTP code: {e}"),
+            reason: format!("compute TOTP code: {e}"),
         })
     }
 
@@ -216,14 +216,14 @@ impl BypassStore {
         // tore the mutex. Treat as Internal — the UI can offer
         // "restart the app" since recovery isn't safe.
         self.inner.lock().map_err(|_| BypassError::Internal {
-            message: "store mutex poisoned by a prior panic".into(),
+            reason: "store mutex poisoned by a prior panic".into(),
         })
     }
 }
 
 fn parse_path(s: &str) -> Result<RelPath, BypassError> {
     RelPath::new(s).map_err(|e| BypassError::InvalidPath {
-        message: e.to_string(),
+        reason: e.to_string(),
     })
 }
 
@@ -255,7 +255,7 @@ mod tests {
                     .iter()
                     .position(|&b| b == b'|')
                     .ok_or_else(|| BypassError::Crypto {
-                        message: "missing header separator".into(),
+                        reason: "missing header separator".into(),
                     })?;
             Ok(ciphertext[pos + 1..].iter().map(|b| b ^ 0xAA).collect())
         }

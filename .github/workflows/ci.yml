@@ -22,6 +22,29 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  # Detects which areas of the repo changed in this push / PR so the
+  # heavier jobs below (Android Gradle build, especially) only run
+  # when they actually need to. Keeps GH runner usage down on
+  # docs-only / Rust-only iterations.
+  changes:
+    name: detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            android:
+              - 'android/**'
+              - 'crates/bypass-ffi/**'
+              - 'crates/bypass-core/**'
+              - 'Cargo.lock'
+              - 'Cargo.toml'
+              - '.github/workflows/ci.yml'
+
   test:
     name: build + test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -147,6 +170,8 @@ jobs:
 
   android-gradle-build:
     name: Android Gradle build (debug APK)
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
