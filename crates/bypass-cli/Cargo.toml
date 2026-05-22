@@ -17,10 +17,16 @@ arboard = "3"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 git2 = "0.20"
+libp2p-identity = { version = "0.2", features = ["ed25519", "peerid", "rand"] }
 rand = "0.9"
 rpassword = "7"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+spake2 = "0.4"
 thiserror = "2"
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+toml = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

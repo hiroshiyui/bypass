@@ -858,6 +858,53 @@ fn audit_lists_problem_files() {
 }
 
 #[test]
+fn sync_identity_rotate_requires_confirm_and_creates_a_key() {
+    let env = common::TestEnv::new();
+    // Point the CLI's identity-key resolver at an isolated config dir
+    // so we never touch the developer's real ~/.config/bypass/.
+    let cfg = tempfile::TempDir::new().unwrap();
+
+    // Without --confirm: refuses.
+    bypass(&env)
+        .args(["sync", "identity", "rotate"])
+        .env("XDG_CONFIG_HOME", cfg.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--confirm"));
+
+    // With --confirm: rotates. The identity file appears with mode 0600.
+    bypass(&env)
+        .args(["sync", "identity", "rotate", "--confirm"])
+        .env("XDG_CONFIG_HOME", cfg.path())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("New peer id"));
+
+    let key_path = cfg.path().join("bypass").join("identity.key");
+    assert!(
+        key_path.exists(),
+        "identity.key was not created at {}",
+        key_path.display()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&key_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "wrote with mode {mode:#o}");
+    }
+}
+
+#[test]
+fn sync_pair_show_is_staged_until_5_2_b_lands() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["sync", "pair", "--show"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("5.2.b"));
+}
+
+#[test]
 fn edit_with_unchanged_buffer_reports_no_changes() {
     let env = common::TestEnv::new();
     bypass(&env)

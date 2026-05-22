@@ -136,11 +136,17 @@ pub enum Command {
     /// Sync the store with its git remote: `git pull --rebase` then
     /// `git push`. Before pushing, runs the same leak check as
     /// `bypass audit` over the commits about to be published.
+    ///
+    /// With no subcommand: runs the default git-based sync. With a
+    /// subcommand: pair another device, manage the local identity
+    /// key, etc.
     Sync {
-        /// Skip the leak-check audit. Use only when you know exactly
-        /// what's about to be pushed.
+        /// Skip the leak-check audit. Only meaningful when no
+        /// subcommand is given (i.e. for the default sync action).
         #[arg(long)]
         force: bool,
+        #[command(subcommand)]
+        sub: Option<SyncCmd>,
     },
 
     /// Inspect the local store for files that don't look like OpenPGP
@@ -191,5 +197,43 @@ pub enum Command {
         /// Seconds to keep the password on the clipboard before
         /// restoring whatever was there before.
         seconds: u64,
+    },
+}
+
+/// Sub-actions under `bypass sync`.
+#[derive(Debug, Subcommand)]
+pub enum SyncCmd {
+    /// Pair this device with another via the PAKE-from-PIN flow
+    /// (ADR-0012). One side runs `--show` to display a PIN; the other
+    /// runs `--enter` and types it in.
+    Pair {
+        /// Display a PIN and wait for the other device.
+        #[arg(long, conflicts_with = "enter")]
+        show: bool,
+        /// Type the PIN displayed on the other device.
+        #[arg(long, conflicts_with = "show")]
+        enter: bool,
+        /// Friendly name to record for the local device in the paired
+        /// peer's `peers.toml`. Defaults to the system hostname.
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// Manage this device's libp2p identity key.
+    Identity {
+        #[command(subcommand)]
+        action: SyncIdentityCmd,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SyncIdentityCmd {
+    /// Generate a fresh Ed25519 identity, overwriting the existing
+    /// one and clearing `peers.toml`. Requires `--confirm` because
+    /// rotation invalidates every paired peer relationship.
+    Rotate {
+        /// Acknowledge that rotation destroys all pairings.
+        #[arg(long)]
+        confirm: bool,
     },
 }

@@ -8,6 +8,7 @@ mod doctor;
 mod edit;
 mod extensions;
 mod storage_fs;
+mod sync;
 mod tree;
 mod vcs_git2;
 
@@ -235,7 +236,13 @@ fn dispatch() -> Result<u8> {
             Ok(0)
         }
         Command::Ext { name, args } => extensions::dispatch(&name, &args),
-        Command::Sync { force } => sync(force),
+        Command::Sync { force, sub } => match sub {
+            None => sync(force),
+            Some(cli::SyncCmd::Identity {
+                action: cli::SyncIdentityCmd::Rotate { confirm },
+            }) => sync_identity_rotate(confirm),
+            Some(cli::SyncCmd::Pair { show, enter, name }) => sync_pair(show, enter, name),
+        },
         Command::Audit => audit_cmd(),
         Command::Git { args } => {
             let root = StorageFs::resolve_default_root().context("resolve store root")?;
@@ -401,6 +408,33 @@ fn install_gitattributes_if_missing(root: &std::path::Path) -> Result<()> {
         eprintln!("bypass: installed missing `.gitattributes` rule");
     }
     Ok(())
+}
+
+fn sync_identity_rotate(confirm: bool) -> Result<u8> {
+    sync::identity::ensure_rotate_confirmed(confirm)?;
+    let path = sync::identity::default_path()?;
+    let kp = sync::identity::rotate(&path)?;
+    // Clearing peers.toml is mandatory per ADR-0015 §Decision step 4:
+    // every paired peer was pinning the *old* key.
+    let peers_path = sync::peers::Peers::default_path()?;
+    let mut peers = sync::peers::Peers::load(&peers_path)?;
+    let cleared = peers.records().len();
+    peers.clear();
+    peers.save(&peers_path)?;
+    let new_pid = sync::identity::peer_id(&kp).to_base58();
+    eprintln!(
+        "Rotated identity. New peer id: {new_pid}\n\
+         Cleared {cleared} paired peer(s); re-pair every device with `bypass sync pair`."
+    );
+    Ok(0)
+}
+
+fn sync_pair(_show: bool, _enter: bool, _name: Option<String>) -> Result<u8> {
+    bail!(
+        "`bypass sync pair` is staged: the PAKE-from-PIN handshake is implemented and \
+         covered by `cargo test -p bypass sync::pairing`, but end-to-end pairing across \
+         devices needs the libp2p transport that lands in sub-milestone 5.2.b."
+    );
 }
 
 fn audit_cmd() -> Result<u8> {
