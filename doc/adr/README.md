@@ -40,3 +40,4 @@ Process and conventions are defined in
 | 0019 | [Peer revocation trust semantics: history is final](0019-peer-revocation-trust-semantics.md) | Accepted |
 | 0020 | [Sync-daemon service supervision: systemd user unit + launchd agent](0020-daemon-service-supervision.md) | Accepted |
 | 0021 | [Release packaging: hand-rolled GitHub Actions workflow for v0.1.x](0021-release-packaging.md) | Accepted |
+| 0022 | [Native-messaging wire protocol between `bypass` and the browser extension](0022-native-messaging-wire-protocol.md) | Accepted |
