@@ -41,6 +41,7 @@ spake2 = "0.4"
 thiserror = "2"
 tokio = { version = "1", features = ["rt", "sync", "time", "macros", "signal", "io-util", "net"] }
 toml = "1"
+zeroize = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

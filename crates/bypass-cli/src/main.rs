@@ -21,6 +21,7 @@ use bypass_core::generate::{self, DEFAULT_LENGTH};
 use bypass_core::path::RelPath;
 use bypass_core::store::Store;
 use clap::Parser;
+use zeroize::Zeroizing;
 
 use crate::clipboard::DEFAULT_CLEAR_SECS;
 
@@ -48,11 +49,15 @@ fn dispatch() -> Result<u8> {
             let plaintext = store.show(&entry).map_err(map_store_err)?;
             let text =
                 std::str::from_utf8(plaintext.as_slice()).context("entry is not valid UTF-8")?;
-            let code = bypass_core::otp::current_code(text).context("compute TOTP code")?;
+            // Wrap the TOTP code in `Zeroizing` so the heap String holding
+            // the six digits scrubs on drop (security audit H5; TOTP codes
+            // are short-lived but still secrets).
+            let code: Zeroizing<String> =
+                Zeroizing::new(bypass_core::otp::current_code(text).context("compute TOTP code")?);
             if clip {
                 clipboard::copy_and_auto_clear(code.as_bytes(), DEFAULT_CLEAR_SECS)?;
             } else {
-                println!("{code}");
+                println!("{}", &*code);
             }
             Ok(0)
         }
@@ -86,7 +91,7 @@ fn dispatch() -> Result<u8> {
             let plaintext = read_secret_from_stdin(multiline)?;
             let mut store = open_store()?;
             store
-                .insert(&entry, &plaintext, force)
+                .insert(&entry, plaintext.as_slice(), force)
                 .map_err(map_store_err)?;
             Ok(0)
         }
@@ -95,7 +100,9 @@ fn dispatch() -> Result<u8> {
             let store = open_store()?;
             let plaintext = store.show(&entry).map_err(map_store_err)?;
             // Output bytes depending on whether a field was requested.
-            let output: Vec<u8> = match field.as_deref() {
+            // Wrapped in `Zeroizing` so the heap allocation backing the
+            // copy is scrubbed on drop (security audit: H1).
+            let output: Zeroizing<Vec<u8>> = Zeroizing::new(match field.as_deref() {
                 Some(name) => {
                     let parsed = bypass_core::entry::Entry::parse(plaintext.as_slice())
                         .context("parse entry body")?;
@@ -105,7 +112,7 @@ fn dispatch() -> Result<u8> {
                     value.as_bytes().to_vec()
                 }
                 None => plaintext.as_slice().to_vec(),
-            };
+            });
             if clip {
                 // Whole-entry copy is meaningless: a multi-line entry would
                 // paste with key:value rows attached. So `-c` without a
@@ -196,19 +203,25 @@ fn dispatch() -> Result<u8> {
         } => {
             let entry = parse_entry(&path)?;
             let length = length.unwrap_or(DEFAULT_LENGTH);
-            let password = generate::generate(length, !no_symbols);
+            // Wrap the generated password in `Zeroizing` so it's scrubbed
+            // on drop (security audit: H1). `generate` returns a plain
+            // `String`; the wrap covers it from that point on.
+            let password: Zeroizing<String> =
+                Zeroizing::new(generate::generate(length, !no_symbols));
             let mut store = open_store()?;
             if in_place {
                 // Replace only the first line; keep the rest of the body.
-                let existing = match store.show(&entry) {
+                // Both intermediate buffers hold plaintext — `Zeroizing`
+                // them per audit H1.
+                let existing: Zeroizing<Vec<u8>> = Zeroizing::new(match store.show(&entry) {
                     Ok(b) => b.as_slice().to_vec(),
                     Err(e) => return Err(map_store_err(e)),
-                };
+                });
                 let tail: &[u8] = match existing.iter().position(|&b| b == b'\n') {
                     Some(i) => &existing[i..],
                     None => b"",
                 };
-                let mut new_body = password.clone().into_bytes();
+                let mut new_body: Zeroizing<Vec<u8>> = Zeroizing::new(password.as_bytes().to_vec());
                 new_body.extend_from_slice(tail);
                 store
                     .insert(&entry, &new_body, /*overwrite=*/ true)
@@ -221,7 +234,10 @@ fn dispatch() -> Result<u8> {
             if clip {
                 clipboard::copy_and_auto_clear(password.as_bytes(), DEFAULT_CLEAR_SECS)?;
             } else {
-                println!("{password}");
+                // `password` is `Zeroizing<String>`; deref to `&str` for
+                // formatting so we don't borrow it as `Zeroizing` (which
+                // doesn't impl `Display`).
+                println!("{}", &*password);
             }
             Ok(0)
         }
@@ -318,16 +334,21 @@ fn parse_entry(s: &str) -> Result<RelPath> {
     RelPath::new(s).map_err(|e| anyhow!("invalid entry path: {e}"))
 }
 
-fn read_secret_from_stdin(multiline: bool) -> Result<Vec<u8>> {
+fn read_secret_from_stdin(multiline: bool) -> Result<Zeroizing<Vec<u8>>> {
+    // Every intermediate buffer that may hold plaintext is wrapped in
+    // `Zeroizing` so its heap allocation is scrubbed on drop (security
+    // audit H2). `rpassword::prompt_password` allocates a `String`
+    // we can't zeroize at the source, so we zeroize the bytes we
+    // *copy out of it* before the `String` is dropped.
     if multiline {
-        let mut buf = Vec::new();
+        let mut buf: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::new());
         io::stdin().read_to_end(&mut buf).context("read stdin")?;
         Ok(buf)
     } else {
         // For non-interactive callers (pipes), read a single line as-is.
         // For interactive callers, prompt twice with echo off.
         if !atty_stdin() {
-            let mut line = String::new();
+            let mut line: Zeroizing<String> = Zeroizing::new(String::new());
             io::stdin().read_line(&mut line).context("read stdin")?;
             // Strip the trailing newline that read_line includes, mirroring
             // how a user pressing Enter on a TTY would not store the newline.
@@ -337,14 +358,18 @@ fn read_secret_from_stdin(multiline: bool) -> Result<Vec<u8>> {
                     line.pop();
                 }
             }
-            Ok(line.into_bytes())
+            Ok(Zeroizing::new(line.as_bytes().to_vec()))
         } else {
-            let a = rpassword::prompt_password("Enter password: ").context("read password")?;
-            let b = rpassword::prompt_password("Retype password: ").context("confirm password")?;
-            if a != b {
+            let a: Zeroizing<String> = Zeroizing::new(
+                rpassword::prompt_password("Enter password: ").context("read password")?,
+            );
+            let b: Zeroizing<String> = Zeroizing::new(
+                rpassword::prompt_password("Retype password: ").context("confirm password")?,
+            );
+            if *a != *b {
                 bail!("passwords do not match");
             }
-            Ok(a.into_bytes())
+            Ok(Zeroizing::new(a.as_bytes().to_vec()))
         }
     }
 }

@@ -26,6 +26,7 @@ use bypass_core::path::RelPath;
 use bypass_core::storage::Storage;
 use bypass_core::store::{Store, StoreError};
 use bypass_core::vcs::VersionControl;
+use zeroize::Zeroizing;
 
 use crate::storage_fs::overwrite_then_unlink;
 
@@ -54,9 +55,11 @@ where
     V::Error: 'static,
 {
     // 1. Load current plaintext (empty for new entries — pass behaviour).
-    let existing = match store.show(entry) {
-        Ok(bytes) => bytes.as_slice().to_vec(),
-        Err(StoreError::NotFound(_)) => Vec::new(),
+    //    Wrap in `Zeroizing` so the heap copy is scrubbed on drop
+    //    (security audit H1).
+    let existing: Zeroizing<Vec<u8>> = match store.show(entry) {
+        Ok(bytes) => Zeroizing::new(bytes.as_slice().to_vec()),
+        Err(StoreError::NotFound(_)) => Zeroizing::new(Vec::new()),
         Err(e) => return Err(anyhow::Error::new(e)),
     };
 
@@ -67,11 +70,12 @@ where
     spawn_editor(&tmp.path)?;
 
     // 4. Re-read the (possibly edited) tempfile.
-    let new_plaintext =
-        fs::read(&tmp.path).with_context(|| format!("read tempfile {}", tmp.path.display()))?;
+    let new_plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(
+        fs::read(&tmp.path).with_context(|| format!("read tempfile {}", tmp.path.display()))?,
+    );
 
     // 5. Compare and persist if changed.
-    if new_plaintext == existing {
+    if *new_plaintext == *existing {
         eprintln!("no changes");
         return Ok(());
     }
