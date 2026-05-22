@@ -101,7 +101,12 @@ unsafe extern "C" {
 pub async fn bind_or_refuse_existing(path: &Path) -> Result<UnixListener> {
     if path.exists() {
         // Try to talk to whoever is on the other end. A successful
-        // connect means there's a live daemon; refuse.
+        // connect means there's a live daemon; refuse. Anything else
+        // — `ECONNREFUSED` from a crashed daemon's orphan socket,
+        // `ENOTSOCK` from a leftover regular file (macOS surfaces
+        // this as `Other` with errno 38), `ENOENT` from a race —
+        // means there is nothing live here, and we clear the path
+        // before re-binding.
         match UnixStream::connect(path).await {
             Ok(_) => {
                 return Err(SocketError::AlreadyRunning {
@@ -109,22 +114,19 @@ pub async fn bind_or_refuse_existing(path: &Path) -> Result<UnixListener> {
                 }
                 .into());
             }
-            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
-                // Stale socket from a crashed daemon — unlink and re-bind.
-                std::fs::remove_file(path).map_err(|source| SocketError::Io {
-                    path: path.to_path_buf(),
-                    source,
-                })?;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Raced ourselves; harmless.
-            }
-            Err(source) => {
-                return Err(SocketError::Io {
-                    path: path.to_path_buf(),
-                    source,
+            Err(_) => {
+                // Best-effort unlink; ignore `NotFound` (raced
+                // ourselves to the cleanup). Anything else is a
+                // permission / fs error we want to surface.
+                if let Err(source) = std::fs::remove_file(path)
+                    && source.kind() != std::io::ErrorKind::NotFound
+                {
+                    return Err(SocketError::Io {
+                        path: path.to_path_buf(),
+                        source,
+                    }
+                    .into());
                 }
-                .into());
             }
         }
     }

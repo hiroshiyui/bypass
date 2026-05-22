@@ -223,8 +223,11 @@ mod tests {
         let mut handle = watch(td.path()).unwrap();
 
         fs::write(td.path().join("entry.gpg"), b"ciphertext").unwrap();
-        // Allow the debounce window plus scheduling slack.
-        let tick = tokio::time::timeout(Duration::from_secs(3), handle.rx().recv()).await;
+        // Allow the debounce window plus scheduling slack. macOS
+        // FSEvents has a built-in latency that adds ~1–2 s on top of
+        // the inotify-instant Linux path; 10 s comfortably covers
+        // both kernels including CI-runner noise.
+        let tick = tokio::time::timeout(Duration::from_secs(10), handle.rx().recv()).await;
         assert!(tick.is_ok() && tick.unwrap().is_some(), "expected a tick");
     }
 
@@ -236,10 +239,13 @@ mod tests {
         let mut handle = watch(td.path()).unwrap();
 
         fs::write(git.join("index"), b"git internal").unwrap();
-        // Wait one full debounce window plus slack — no tick should
-        // arrive.
+        // Wait the debounce window plus enough slack for macOS
+        // FSEvents to deliver — if a tick *was* going to land, it
+        // would have by now. Tight enough that the test fails
+        // quickly when the filter regresses; generous enough that
+        // FSEvents latency doesn't make it flaky.
         let tick =
-            tokio::time::timeout(DEBOUNCE + Duration::from_millis(500), handle.rx().recv()).await;
+            tokio::time::timeout(DEBOUNCE + Duration::from_secs(3), handle.rx().recv()).await;
         assert!(tick.is_err(), "should have timed out; got {tick:?}");
     }
 }
