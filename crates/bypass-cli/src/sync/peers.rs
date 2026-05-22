@@ -52,10 +52,7 @@ impl Peers {
     /// Resolve the canonical on-disk location:
     /// `$XDG_CONFIG_HOME/bypass/peers.toml`.
     pub fn default_path() -> Result<PathBuf> {
-        let dir = dirs::config_dir().context(
-            "cannot resolve $XDG_CONFIG_HOME (or its fallback); set the variable manually",
-        )?;
-        Ok(dir.join("bypass").join("peers.toml"))
+        Ok(super::config_dir()?.join("peers.toml"))
     }
 
     /// Load the peers table. Returns an empty table if the file

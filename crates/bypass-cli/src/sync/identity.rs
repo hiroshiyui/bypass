@@ -22,9 +22,7 @@ use libp2p_identity::{Keypair, PeerId};
 /// key: `$XDG_CONFIG_HOME/bypass/identity.key`, with the usual
 /// `dirs::config_dir()` fallback for unset XDG.
 pub fn default_path() -> Result<PathBuf> {
-    let dir = dirs::config_dir()
-        .context("cannot resolve $XDG_CONFIG_HOME (or its fallback); set the variable manually")?;
-    Ok(dir.join("bypass").join("identity.key"))
+    Ok(super::config_dir()?.join("identity.key"))
 }
 
 /// Load the identity at `path`, generating a fresh Ed25519 keypair and
