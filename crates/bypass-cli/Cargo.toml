@@ -18,7 +18,13 @@ clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 clap_mangen = "0.2"
 dirs = "6"
-git2 = "0.20"
+# `vendored-openssl` builds OpenSSL from source as part of `cargo
+# build` instead of linking the system `libssl`. Needed for the
+# release workflow's `cross`-based aarch64-linux build (the cross
+# container has no `libssl-dev:arm64`); harmless on every other
+# target where `cross` isn't in play. Adds ~5 MB to the stripped
+# binary.
+git2 = { version = "0.20", features = ["vendored-openssl"] }
 libp2p = { version = "0.56", features = [
     "macros",
     "tokio",
