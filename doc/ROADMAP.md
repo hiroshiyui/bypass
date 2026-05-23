@@ -189,13 +189,21 @@ Actual dependencies as of Phase 5.2:
 - [x] `bypass completion <shell>` — generate shell completions
 - [x] Man page generation (`bypass man`)
 - [x] Migration helper from `pass` (no-op — same on-disk format per [ADR-0002](adr/0002-pass-compatible-on-disk-layout.md); see README "Migrating from `pass`")
-- [x] Integration tests covering full CRUD + git flows ([`tests/end_to_end.rs`](../crates/bypass-cli/tests/end_to_end.rs): 26 tests; [`tests/sync_loopback.rs`](../crates/bypass-cli/tests/sync_loopback.rs) + [`tests/sync_daemon.rs`](../crates/bypass-cli/tests/sync_daemon.rs) `#[ignore]`-by-default)
+- [x] Integration tests covering full CRUD + git flows ([`tests/end_to_end.rs`](../crates/bypass-cli/tests/end_to_end.rs): 36 tests; [`tests/sync_loopback.rs`](../crates/bypass-cli/tests/sync_loopback.rs) + [`tests/sync_daemon.rs`](../crates/bypass-cli/tests/sync_daemon.rs) `#[ignore]`-by-default)
 - [x] CI: build + test on Linux/macOS ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml))
 - [x] Release packaging ([`.github/workflows/release.yml`](../.github/workflows/release.yml) + [ADR-0021](adr/0021-release-packaging.md): hand-rolled, four Unix targets on `v*` tags)
 - [x] Sync-daemon service integration (`install` / `uninstall` / `start` / `stop` / `enable` / `disable` / `status`, per [ADR-0020](adr/0020-daemon-service-supervision.md)):
   - [x] Linux: systemd user unit at `~/.config/systemd/user/bypass-sync.service`, managed via `systemctl --user`
   - [x] macOS: launchd agent at `~/Library/LaunchAgents/io.bypass.sync.plist`, managed via `launchctl bootstrap`/`bootout`/`kickstart`/`print`
   - Resolves the Phase 5.2 daemon-supervision open question recorded in [`doc/sync-p2p-evaluation.md`](sync-p2p-evaluation.md)
+- [x] **CLI workflow eval** — exercised the full surface against a throwaway keyring; closed seven findings (commits `52f6349` + `e507a43`):
+  - [x] **F1** `bypass init` refuses to overwrite an existing `.gpg-id` unless `--force`
+  - [x] **F2** `bypass insert` refuses zero-byte plaintext
+  - [x] **F3** `init` / `insert` / `generate` emit stderr confirmations (`added` / `updated` / `rotated` / `initialised store …`) matching the existing `cp` / `mv` / `rm` style
+  - [x] **F4** `messaging-host --help` no longer leaks an unrendered Markdown ADR link
+  - [x] **F5** `bypass find` with no matches exits 1 with a stderr message (was: silent exit 0)
+  - [x] **F6** `bypass git` passthrough soft-warns before known-destructive shapes (`reset --hard`, `clean -f*`, `checkout .` / `--`, `branch -D`, `push --force[-with-lease]`); never refuses
+  - [x] **F7** `bypass show -c` (and friends) probe `arboard::Clipboard::new()` in the foreground before claiming success — tty-only sessions get a clear "install xclip/xsel/wl-clipboard" error instead of a silent daemon death
 
 ---
 
