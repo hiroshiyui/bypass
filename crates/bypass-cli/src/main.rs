@@ -74,7 +74,7 @@ fn dispatch() -> Result<u8> {
             }
             Ok(0)
         }
-        Command::Init { gpg_ids } => {
+        Command::Init { gpg_ids, force } => {
             let root = StorageFs::resolve_default_root().context("resolve store root")?;
             // Audit finding F2: ensure the store root is mode 0700 so a
             // sibling user on a multi-user machine can't list entry
@@ -91,6 +91,26 @@ fn dispatch() -> Result<u8> {
                 std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
                     .with_context(|| format!("chmod 0700 {}", root.display()))?;
             }
+            // CLI eval F1: refuse silent .gpg-id overwrite on an
+            // already-initialised store. The desktop CLI would
+            // otherwise leave existing blobs encrypted to the OLD
+            // recipient while new inserts target the NEW one — the
+            // store splits in two without any signal. Require the
+            // user to either remove `.gpg-id` first or opt in via
+            // `--force` after they've understood the consequence.
+            let gpg_id_path = root.join(".gpg-id");
+            if gpg_id_path.exists() && !force {
+                bail!(
+                    "store at {} is already initialised; refusing to overwrite \
+                    `.gpg-id` (existing blobs would stay encrypted to the old \
+                    recipient while new inserts target the new one). Re-run with \
+                    `bypass init --force {}` if that's really what you want, or \
+                    `rm {}` first.",
+                    root.display(),
+                    gpg_ids.join(" "),
+                    gpg_id_path.display(),
+                );
+            }
             let mut store = open_store()?;
             let keys: Vec<KeyId> = gpg_ids.into_iter().map(KeyId::new).collect();
             store.init(&keys).map_err(map_store_err)?;
@@ -106,6 +126,18 @@ fn dispatch() -> Result<u8> {
         } => {
             let entry = parse_entry(&path)?;
             let plaintext = read_secret_from_stdin(multiline)?;
+            // CLI eval F2: refuse zero-byte plaintext. A 0-byte entry
+            // is almost always an accident (terminal closed stdin,
+            // `< /dev/null` redirect, EOF on an empty multiline) and
+            // is indistinguishable from "I forgot the password" at
+            // show time. Surface the mistake early.
+            if plaintext.is_empty() {
+                bail!(
+                    "refusing to insert {path}: stdin closed with no plaintext. \
+                    Pipe a non-empty password into `bypass insert`, or use \
+                    `bypass insert -m` and type the body before EOF.",
+                );
+            }
             let mut store = open_store()?;
             store
                 .insert(&entry, plaintext.as_slice(), force)

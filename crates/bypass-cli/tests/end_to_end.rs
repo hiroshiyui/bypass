@@ -214,6 +214,84 @@ fn init_creates_a_git_repo_and_inserts_auto_commit() {
 }
 
 #[test]
+fn init_refuses_to_overwrite_existing_gpg_id_without_force() {
+    // CLI eval F1: re-init on a populated store would otherwise
+    // leave existing entries encrypted to the OLD recipient while
+    // future inserts target the NEW one, silently splitting the
+    // store across two keys.
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "x"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+
+    // Second init with a different recipient must fail; the helpful
+    // error names both the fix (`rm .gpg-id`) and the override
+    // (`--force`).
+    let out = bypass(&env)
+        .args(["init", "bob@elsewhere.local"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(
+        stderr.contains("already initialised"),
+        "stderr was {stderr:?}"
+    );
+    assert!(stderr.contains("--force"), "stderr was {stderr:?}");
+
+    // `.gpg-id` must still point at the original recipient.
+    let gpg_id = std::fs::read_to_string(env.store_dir.path().join(".gpg-id")).unwrap();
+    assert_eq!(gpg_id.trim(), common::TEST_RECIPIENT);
+}
+
+#[test]
+fn init_force_allows_overwriting_gpg_id() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["init", "--force", "bob@elsewhere.local"])
+        .assert()
+        .success();
+    let gpg_id = std::fs::read_to_string(env.store_dir.path().join(".gpg-id")).unwrap();
+    assert_eq!(gpg_id.trim(), "bob@elsewhere.local");
+}
+
+#[test]
+fn insert_refuses_empty_plaintext() {
+    // CLI eval F2: zero-byte plaintext is almost always an accident
+    // (terminal closed stdin, `< /dev/null`, immediate EOF on
+    // multiline). Refuse with a clear pointer rather than create
+    // an "I forgot the password" entry that decrypts to nothing.
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let out = bypass(&env)
+        .args(["insert", "empty"])
+        .write_stdin("")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(stderr.contains("no plaintext"), "stderr was {stderr:?}");
+
+    // No entry should have been written.
+    assert!(
+        !env.store_dir.path().join("empty.gpg").exists(),
+        "empty.gpg must NOT exist after refused insert"
+    );
+}
+
+#[test]
 fn log_shows_full_and_filtered_history() {
     let env = common::TestEnv::new();
     bypass(&env)

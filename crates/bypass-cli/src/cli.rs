@@ -25,6 +25,15 @@ pub enum Command {
         /// GPG key id(s) that can decrypt entries in this store.
         #[arg(required = true)]
         gpg_ids: Vec<String>,
+        /// Overwrite an existing `.gpg-id` without re-encrypting
+        /// existing entries. The default refuses on an already-
+        /// initialised store because changing the recipient leaves
+        /// stored blobs encrypted to the OLD key, while new inserts
+        /// would target the new key — silently splitting the store
+        /// across two recipients. Future entries will fail to encrypt
+        /// if the new recipient is missing from the keyring.
+        #[arg(short, long)]
+        force: bool,
     },
 
     /// Insert a new password entry, reading the secret from stdin.
@@ -204,8 +213,7 @@ pub enum Command {
     /// `bypass man > /usr/local/share/man/man1/bypass.1`.
     Man,
 
-    /// Native-messaging host for the browser extension (Phase 7,
-    /// [ADR-0022](../../doc/adr/0022-native-messaging-wire-protocol.md)).
+    /// Native-messaging host for the browser extension (ADR-0022).
     ///
     /// With no sub-action, runs the host: reads length-prefixed JSON
     /// requests on stdin and writes length-prefixed JSON replies on
