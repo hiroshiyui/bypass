@@ -208,6 +208,51 @@ where
         Ok(())
     }
 
+    /// Encrypt `plaintext` to the recipients resolved for `entry` and
+    /// write the blob — but **do not commit**. The freshly-resolved
+    /// blob path is returned so the caller can stage many such writes
+    /// and commit them together.
+    ///
+    /// Used by `bypass restore` (both fresh-store and `--in-place`
+    /// modes, ADR-0026) to wrap an entire bundle's worth of writes in
+    /// a single git commit. If the destination blob already exists,
+    /// the backing [`Storage`] is asked to remove it first — for
+    /// `StorageFs` this triggers the shred-style overwrite from
+    /// [ADR-0008](../../../doc/adr/0008-secure-delete-via-overwrite.md),
+    /// which matters most during in-place rotation when the old
+    /// ciphertext is encrypted to a soon-to-be-superseded key. For
+    /// fresh-store restore (empty destination) the removal is a
+    /// documented no-op per [`Storage::remove`].
+    pub fn insert_no_commit(
+        &mut self,
+        entry: &RelPath,
+        plaintext: &[u8],
+    ) -> Result<RelPath, C, S, V> {
+        let blob = entry_to_blob(entry);
+        let recipients =
+            gpg_id::resolve_recipients(&self.storage, entry).map_err(StoreError::from_gpg_id)?;
+        let ciphertext = self
+            .crypto
+            .encrypt(plaintext, &recipients)
+            .map_err(StoreError::Crypto)?;
+        // Shred-if-present; no-op on a fresh store. See ADR-0008.
+        self.storage.remove(&blob).map_err(StoreError::Storage)?;
+        self.storage
+            .write(&blob, &ciphertext)
+            .map_err(StoreError::Storage)?;
+        Ok(blob)
+    }
+
+    /// Commit `paths` with `message`, going straight through to the
+    /// [`VersionControl`] backend. Used by `bypass restore` to land
+    /// a bulk re-encryption under one commit (ADR-0026); not the
+    /// preferred path for normal CRUD, which goes through
+    /// [`Self::insert`] / [`Self::remove`] / [`Self::copy`] /
+    /// [`Self::rename`] and lets each operation own its own commit.
+    pub fn commit_changes(&mut self, paths: &[RelPath], message: &str) -> Result<(), C, S, V> {
+        self.vcs.commit(paths, message).map_err(StoreError::Vcs)
+    }
+
     /// Decrypt and return the plaintext of `entry`.
     pub fn show(&self, entry: &RelPath) -> Result<SecretBytes, C, S, V> {
         let blob = entry_to_blob(entry);
@@ -851,6 +896,41 @@ mod tests {
         store.rename(&rp("a/one"), &rp("a/one"), false).unwrap();
         // Entry must still be present and intact.
         assert_eq!(store.show(&rp("a/one")).unwrap().as_slice(), b"plain");
+    }
+
+    #[test]
+    fn insert_no_commit_writes_blob_without_history() {
+        let mut store = fresh_store();
+        store.init(&[KeyId::new("ALICE")]).unwrap();
+        let blob = store
+            .insert_no_commit(&rp("email/work"), b"hunter2")
+            .unwrap();
+        assert_eq!(blob.as_str(), "email/work.gpg");
+        assert_eq!(
+            store.show(&rp("email/work")).unwrap().as_slice(),
+            b"hunter2"
+        );
+    }
+
+    #[test]
+    fn insert_no_commit_overwrites_existing_entry() {
+        let mut store = fresh_store();
+        store.init(&[KeyId::new("ALICE")]).unwrap();
+        store.insert(&rp("e"), b"v1", false).unwrap();
+        store.insert_no_commit(&rp("e"), b"v2").unwrap();
+        assert_eq!(store.show(&rp("e")).unwrap().as_slice(), b"v2");
+    }
+
+    #[test]
+    fn commit_changes_drives_the_vcs_backend() {
+        // NoVcs's commit is a no-op so we only confirm the call doesn't error;
+        // the real-VCS coverage lives in the bypass-cli integration tests.
+        let mut store = fresh_store();
+        store.init(&[KeyId::new("ALICE")]).unwrap();
+        let blob = store.insert_no_commit(&rp("a"), b"x").unwrap();
+        store
+            .commit_changes(&[blob], "bypass: bulk rewrite")
+            .unwrap();
     }
 
     #[test]

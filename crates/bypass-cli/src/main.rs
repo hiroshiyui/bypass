@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod audit;
+mod backup;
 mod cli;
 mod clipboard;
 mod crypto_gpg;
@@ -9,6 +10,7 @@ mod edit;
 mod extensions;
 mod messaging_host;
 mod native_host_install;
+mod restore;
 mod storage_fs;
 mod sync;
 mod tree;
@@ -127,6 +129,8 @@ fn dispatch() -> Result<u8> {
             );
             Ok(0)
         }
+        Command::Backup { to, subtree } => backup::run(&to, subtree.as_deref()),
+        Command::Restore { bundle, in_place } => restore::run(&bundle, in_place),
         Command::Insert {
             path,
             force,
@@ -418,7 +422,7 @@ fn dispatch() -> Result<u8> {
     }
 }
 
-fn open_store() -> Result<Store<GpgCli, StorageFs, Git2Vcs>> {
+pub(crate) fn open_store() -> Result<Store<GpgCli, StorageFs, Git2Vcs>> {
     let root = StorageFs::resolve_default_root().context("resolve store root")?;
     let storage = StorageFs::new(root.clone());
     let crypto = GpgCli::new();
@@ -540,7 +544,9 @@ fn atty_stdin() -> bool {
     io::stdin().is_terminal()
 }
 
-fn map_store_err<CE, SE, VE>(e: bypass_core::store::StoreError<CE, SE, VE>) -> anyhow::Error
+pub(crate) fn map_store_err<CE, SE, VE>(
+    e: bypass_core::store::StoreError<CE, SE, VE>,
+) -> anyhow::Error
 where
     CE: std::error::Error + Send + Sync + 'static,
     SE: std::error::Error + Send + Sync + 'static,

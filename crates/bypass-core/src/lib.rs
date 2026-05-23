@@ -8,6 +8,7 @@
 //! history. Concrete implementations live in the platform crates
 //! (`bypass-cli`, future `bypass-ffi`, etc.).
 
+pub mod bundle;
 pub mod crypto;
 pub mod entry;
 pub mod error;

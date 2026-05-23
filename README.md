@@ -387,6 +387,75 @@ choices when a rebase fails:
 Last resort: `bypass git rebase --abort` to bail out, decide on a
 strategy, then re-attempt `bypass sync`.
 
+## Backing up and rotating keys
+
+`bypass backup --to <recipient>` streams a GPG-wrapped tar of your
+decrypted store to stdout — the bundle is sealed under any recipient
+you name, so the same primitive covers off-site backup and GPG key
+rotation (see [ADR-0026](doc/adr/0026-export-import-for-backup-and-rotation.md)).
+Plaintext never touches disk: the tar bytes pipe straight into
+`gpg --encrypt`'s stdin.
+
+### Backup to a different machine
+
+```sh
+bypass backup --to backup@example > vault.tar.gpg
+# copy vault.tar.gpg somewhere — USB stick, cloud storage, another host
+```
+
+On the recovery machine (with `backup@example`'s private key in the
+local keyring):
+
+```sh
+mkdir -p ~/.password-store-recovered
+PASSWORD_STORE_DIR=~/.password-store-recovered bypass init backup@example
+PASSWORD_STORE_DIR=~/.password-store-recovered bypass restore vault.tar.gpg
+```
+
+### Rotating to a stronger GPG key
+
+Two flavours. Pick **fresh-store** if you want a clean new store and
+don't need the existing git history (solo machine; nothing paired
+yet). Pick **in-place** if your store is already on a sync mesh —
+the rewrite lands as a single commit so paired peers can fast-forward
+without ancestry breakage.
+
+Fresh-store:
+
+```sh
+bypass backup --to new-key@me > vault.tar.gpg
+# In a fresh tempdir or after moving the old store aside:
+PASSWORD_STORE_DIR=~/.password-store-new bypass init new-key@me
+PASSWORD_STORE_DIR=~/.password-store-new bypass restore vault.tar.gpg
+# When you're satisfied, replace the old store.
+```
+
+In-place (preserves history; peers can pull cleanly):
+
+```sh
+bypass backup --to new-key@me > vault.tar.gpg
+# Swap the recipient:
+echo new-key@me > ~/.password-store/.gpg-id
+bypass restore --in-place vault.tar.gpg
+bypass git log --oneline | head -3   # → single `Re-encrypt store for new-key@me` on top
+```
+
+### Caveats
+
+* **Rotation is forward-confidentiality only.** Old ciphertext blobs
+  an attacker exfiltrated *before* the rotation are still readable
+  if the old private key ever leaks. If you suspect a particular
+  password may have been captured, rotate the *password* — not just
+  the GPG key.
+* **Git history retains the old ciphertexts.** Prior commits contain
+  blobs encrypted to the old recipient. `git filter-repo` (or BFG)
+  is the user's tool for scrubbing them; `bypass` deliberately does
+  not ship a history-rewriting command.
+* **`backup` / `restore` carry bypass-native bundles only.** For
+  foreign vaults (Bitwarden, KeePass, LastPass, …) the design is
+  `bypass import` per [ADR-0027](doc/adr/0027-foreign-format-importers.md);
+  that surface lands in Milestone 4.5.
+
 ## Browser extension (Firefox + Chrome)
 
 `bypass` ships a Manifest V3 WebExtension under

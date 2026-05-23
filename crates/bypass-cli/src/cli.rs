@@ -36,6 +36,53 @@ pub enum Command {
         force: bool,
     },
 
+    /// Stream a GPG-wrapped tar of the decrypted store to stdout.
+    ///
+    /// The bundle is sealed under `--to <recipient>`. To rotate keys,
+    /// pass the *new* key here: the bundle will already be keyed to
+    /// the destination and `bypass restore` can ingest it directly.
+    /// See ADR-0026.
+    ///
+    /// Caveats:
+    ///   * Rotation is forward-confidentiality only. Ciphertext an
+    ///     attacker exfiltrated earlier stays readable if the old
+    ///     private key ever leaks. For entries that really matter,
+    ///     rotate the *password* too.
+    ///   * Git history retains the old ciphertext blobs in prior
+    ///     commits. `git filter-repo` / BFG is the user's tool;
+    ///     `bypass` will not rewrite history.
+    ///   * `backup` / `restore` move bypass-native bundles only.
+    ///     For foreign vaults (Bitwarden, KeePass, ...) see
+    ///     `bypass import` (ADR-0027).
+    Backup {
+        /// GPG recipient the outer wrapper is encrypted to.
+        #[arg(long)]
+        to: String,
+        /// Limit the bundle to a sub-tree of the store. Default:
+        /// whole store.
+        #[arg(long)]
+        subtree: Option<String>,
+    },
+
+    /// Ingest a `bypass backup` bundle into the current store.
+    ///
+    /// Default (fresh-store) mode requires the destination to be
+    /// `bypass init`'d and *empty* — use `--in-place` to re-key a
+    /// store that already has entries. Both modes wrap their per-
+    /// entry writes in a single git commit so paired LAN-sync peers
+    /// can fast-forward. See ADR-0026.
+    Restore {
+        /// Path to the GPG-wrapped tar bundle produced by `bypass backup`.
+        bundle: std::path::PathBuf,
+        /// Re-encrypt every entry in the existing store and roll the
+        /// rewrite into one commit titled `Re-encrypt store for
+        /// <new-key>`. Requires `.gpg-id` to name the destination
+        /// recipient already (typically: edit `.gpg-id`, then run
+        /// this).
+        #[arg(long)]
+        in_place: bool,
+    },
+
     /// Insert a new password entry, reading the secret from stdin.
     Insert {
         /// Entry path, e.g. `email/work`.

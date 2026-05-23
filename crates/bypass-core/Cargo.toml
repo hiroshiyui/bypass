@@ -12,5 +12,11 @@ totp-rs = { version = "5", features = ["otpauth"] }
 thiserror = "2"
 zeroize = { version = "1", features = ["derive"] }
 
+# Bundle format (ADR-0026 / Milestone 4.4). Pure-Rust, no I/O —
+# `bypass-core` stays platform-agnostic per ADR-0003.
+tar = "0.4"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
 [lints.clippy]
 all = { level = "warn", priority = -1 }

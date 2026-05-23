@@ -14,7 +14,7 @@
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 use bypass_core::crypto::{Crypto, KeyId, SecretBytes};
 
@@ -85,6 +85,50 @@ impl GpgCli {
         self.binary.to_string_lossy().into_owned()
     }
 
+    /// Spawn `gpg --encrypt --recipient <recipient>` with piped
+    /// stdin (caller writes the tar bytes), piped stdout (caller
+    /// reads the ciphertext), and piped stderr. Used by `bypass
+    /// backup` to stream a tar bundle through GPG without ever
+    /// buffering the full plaintext in memory (ADR-0026 / Milestone
+    /// 4.4). The caller owns thread orchestration: typically a
+    /// background thread writes to `child.stdin` while the main
+    /// thread reads from `child.stdout`, then both rendezvous on
+    /// `child.wait()`. Stderr is captured for the error message if
+    /// gpg exits non-zero — see [`drain_stderr_and_status`].
+    pub fn spawn_encrypt_stream(&self, recipient: &str) -> Result<Child, GpgError> {
+        let mut cmd = self.base_command();
+        cmd.arg("--trust-model")
+            .arg("always")
+            .arg("--output")
+            .arg("-")
+            .arg("--encrypt")
+            .arg("--recipient")
+            .arg(recipient);
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        cmd.spawn().map_err(|source| GpgError::Spawn {
+            binary: self.binary_for_error(),
+            source,
+        })
+    }
+
+    /// Spawn `gpg --decrypt` with piped stdin (caller pipes the
+    /// outer-wrapped tar in), piped stdout (caller reads the
+    /// recovered tar out), and piped stderr. Counterpart to
+    /// [`spawn_encrypt_stream`]; used by `bypass restore`.
+    pub fn spawn_decrypt_stream(&self) -> Result<Child, GpgError> {
+        let mut cmd = self.base_command();
+        cmd.arg("--output").arg("-").arg("--decrypt");
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        cmd.spawn().map_err(|source| GpgError::Spawn {
+            binary: self.binary_for_error(),
+            source,
+        })
+    }
+
     fn run(&self, mut cmd: Command, stdin_data: &[u8]) -> Result<Vec<u8>, GpgError> {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -109,6 +153,26 @@ impl GpgCli {
         }
         Ok(output.stdout)
     }
+}
+
+/// Wait for `child` and convert a non-zero exit into a
+/// [`GpgError::NonZero`] with the captured stderr. Used by the
+/// streaming `spawn_*_stream` consumers (`backup`, `restore`) once
+/// they're done pumping stdin/stdout.
+pub fn finish_streaming(mut child: Child) -> Result<(), GpgError> {
+    use std::io::Read;
+    let mut stderr_buf = Vec::new();
+    if let Some(mut s) = child.stderr.take() {
+        let _ = s.read_to_end(&mut stderr_buf);
+    }
+    let status = child.wait().map_err(GpgError::Wait)?;
+    if !status.success() {
+        return Err(GpgError::NonZero {
+            status: status.code().unwrap_or(-1),
+            stderr: String::from_utf8_lossy(&stderr_buf).into_owned(),
+        });
+    }
+    Ok(())
 }
 
 impl Crypto for GpgCli {

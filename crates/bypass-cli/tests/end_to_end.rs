@@ -1332,3 +1332,272 @@ fn messaging_host_install_with_chrome_id_writes_both_browsers() {
         "Chrome manifest doesn't include the supplied id: {body}"
     );
 }
+
+// =============================================================
+// Milestone 4.4 — bypass backup / restore (ADR-0026)
+// =============================================================
+
+/// Round-trip a multi-entry store from key A to key B in fresh-store
+/// mode: `init A` → insert → `backup --to B` → `init B` (in a second
+/// store) → `restore` → assert every entry decrypts to its original
+/// plaintext.
+#[test]
+fn backup_restore_round_trip_fresh_store() {
+    let env_a = common::TestEnv::with_two_keys();
+
+    // Source store under key A.
+    bypass(&env_a)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    bypass(&env_a)
+        .args(["insert", "email/work"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+    bypass(&env_a)
+        .args(["insert", "-m", "banking/chase"])
+        .write_stdin("p4ss\nlogin: alice\nurl: https://chase.example\n")
+        .assert()
+        .success();
+    bypass(&env_a)
+        .args(["insert", "notes"])
+        .write_stdin("a third one")
+        .assert()
+        .success();
+
+    // Backup keyed to key B; capture to a tempfile.
+    let bundle_dir = tempfile::TempDir::new().unwrap();
+    let bundle_path = bundle_dir.path().join("v.tar.gpg");
+    let bundle_bytes = bypass(&env_a)
+        .args(["backup", "--to", common::TEST_RECIPIENT_B])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    std::fs::write(&bundle_path, &bundle_bytes).unwrap();
+
+    // Destination store under key B (reuse the same GNUPGHOME so the
+    // key-B private key is available; switch only PASSWORD_STORE_DIR).
+    let store_b = tempfile::TempDir::new().unwrap();
+    let bypass_b = |args: &[&str]| {
+        let mut cmd = Command::cargo_bin("bypass").expect("cargo_bin");
+        cmd.env("GNUPGHOME", env_a.gnupghome.path())
+            .env("PASSWORD_STORE_DIR", store_b.path())
+            .args(args);
+        cmd
+    };
+
+    bypass_b(&["init", common::TEST_RECIPIENT_B])
+        .assert()
+        .success();
+
+    // Verify the empty-store refuse-overwrite guard fires *before*
+    // we restore for real.
+    bypass_b(&["insert", "scratch"])
+        .write_stdin("x")
+        .assert()
+        .success();
+    bypass_b(&["restore", bundle_path.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--in-place"));
+    bypass_b(&["rm", "scratch"]).assert().success();
+
+    // Now restore for real.
+    bypass_b(&["restore", bundle_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("restored 3 entries"));
+
+    // Every entry decrypts back to its original plaintext under key B.
+    bypass_b(&["show", "email/work"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("hunter2"));
+    bypass_b(&["show", "banking/chase"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("p4ss"))
+        .stdout(predicate::str::contains("login: alice"))
+        .stdout(predicate::str::contains("url: https://chase.example"));
+    bypass_b(&["show", "notes"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("a third one"));
+}
+
+/// In-place rotation: backup to key B, edit `.gpg-id`, then
+/// `restore --in-place`. The git history should pick up *one* new
+/// commit (the bulk re-encrypt) on top of the existing inserts.
+#[test]
+fn backup_restore_in_place_rotation() {
+    let env = common::TestEnv::with_two_keys();
+
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "email/work"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "banking/chase"])
+        .write_stdin("p4ss")
+        .assert()
+        .success();
+
+    let pre_log = bypass(&env)
+        .args(["git", "log", "--oneline"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let pre_lines: Vec<&str> = std::str::from_utf8(&pre_log).unwrap().lines().collect();
+    assert_eq!(pre_lines.len(), 3, "expected 3 pre-rotation commits");
+    let original_init_sha: String = pre_lines
+        .last()
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_owned();
+
+    // Snapshot to a bundle keyed to key B.
+    let bundle_dir = tempfile::TempDir::new().unwrap();
+    let bundle_path = bundle_dir.path().join("v.tar.gpg");
+    let bundle_bytes = bypass(&env)
+        .args(["backup", "--to", common::TEST_RECIPIENT_B])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    std::fs::write(&bundle_path, &bundle_bytes).unwrap();
+
+    // Swap recipients to key B and re-key in place.
+    std::fs::write(
+        env.store_dir.path().join(".gpg-id"),
+        format!("{}\n", common::TEST_RECIPIENT_B),
+    )
+    .unwrap();
+    bypass(&env)
+        .args(["restore", "--in-place", bundle_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("restored 2 entries"))
+        .stderr(predicate::str::contains("in-place"));
+
+    // Both entries decrypt under key B now.
+    bypass(&env)
+        .args(["show", "email/work"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("hunter2"));
+    bypass(&env)
+        .args(["show", "banking/chase"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("p4ss"));
+
+    // History: original commits intact + exactly one new top commit
+    // titled `Re-encrypt store for <recipient-B>`.
+    let post_log = bypass(&env)
+        .args(["git", "log", "--oneline"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let post_text = String::from_utf8(post_log).unwrap();
+    let post_lines: Vec<&str> = post_text.lines().collect();
+    assert_eq!(
+        post_lines.len(),
+        4,
+        "expected 4 commits after rotation, got:\n{post_text}"
+    );
+    let head_line = post_lines.first().unwrap();
+    assert!(
+        head_line.contains("Re-encrypt store for"),
+        "expected rewrite commit at HEAD; got {head_line}"
+    );
+    assert!(
+        head_line.contains(common::TEST_RECIPIENT_B),
+        "expected rewrite commit to name the new recipient; got {head_line}"
+    );
+    // Ancestry intact: the original init commit is still reachable
+    // (it's the last line of the log).
+    assert!(
+        post_lines.last().unwrap().starts_with(&original_init_sha),
+        "original init commit no longer reachable; got tail {:?}",
+        post_lines.last()
+    );
+}
+
+/// Restoring a bundle with an unknown `format_version` must refuse
+/// cleanly (the manifest is decoded *before* any per-entry work).
+#[test]
+fn restore_refuses_incompatible_format_version() {
+    let env = common::TestEnv::with_two_keys();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    // Forge a manifest with format_version = 999, wrap it via gpg
+    // --encrypt --recipient B so the outer decrypt succeeds.
+    let bundle_dir = tempfile::TempDir::new().unwrap();
+    let inner_tar = bundle_dir.path().join("inner.tar");
+    let bogus_manifest = "\
+format_version = 999
+created_at_unix = 0
+original_recipients = []
+entries = 0
+";
+    {
+        let f = std::fs::File::create(&inner_tar).unwrap();
+        let mut b = tar::Builder::new(f);
+        let payload = bogus_manifest.as_bytes();
+        let mut h = tar::Header::new_ustar();
+        h.set_size(payload.len() as u64);
+        h.set_mode(0o600);
+        h.set_entry_type(tar::EntryType::Regular);
+        h.set_cksum();
+        b.append_data(&mut h, "manifest.toml", payload).unwrap();
+        b.finish().unwrap();
+    }
+
+    let bundle_path = bundle_dir.path().join("v.tar.gpg");
+    let status = std::process::Command::new("gpg")
+        .env("GNUPGHOME", env.gnupghome.path())
+        .args([
+            "--batch",
+            "--no-tty",
+            "--quiet",
+            "--yes",
+            "--trust-model",
+            "always",
+            "--recipient",
+            common::TEST_RECIPIENT,
+            "--output",
+        ])
+        .arg(&bundle_path)
+        .arg("--encrypt")
+        .arg(&inner_tar)
+        .status()
+        .unwrap();
+    assert!(status.success(), "gpg --encrypt failed: {status}");
+
+    bypass(&env)
+        .args(["restore", bundle_path.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("format_version 999")
+                .or(predicate::str::contains("not supported")),
+        );
+}
