@@ -134,10 +134,17 @@ fn dispatch() -> Result<u8> {
         Command::Restore { bundle, in_place } => restore::run(&bundle, in_place),
         Command::Import {
             format,
+            from_ext,
             source,
             csv_schema,
             csv_has_header,
-        } => import::run(format, &source, csv_schema.as_deref(), csv_has_header),
+        } => import::run(
+            format,
+            from_ext.as_deref(),
+            &source,
+            csv_schema.as_deref(),
+            csv_has_header,
+        ),
         Command::Insert {
             path,
             force,

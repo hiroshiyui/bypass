@@ -1852,3 +1852,85 @@ fn import_keepass_xml_into_fresh_store() {
             "otpauth: otpauth://totp/x?secret=ABC",
         ));
 }
+
+/// Extension-dispatch path: `bypass import --from-ext stub <source>`
+/// invokes a fixture importer that emits two NDJSON `ImportedEntry`
+/// records (ADR-0029). The same canonical mapping + collision
+/// handling + commit path runs for extension output as for the
+/// in-tree parsers.
+#[test]
+fn import_from_extension_via_ndjson_stub() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    // Stage the fixture into a per-test extensions dir; point bypass
+    // at it via `PASSWORD_STORE_EXTENSIONS_DIR`.
+    let ext_dir = tempfile::TempDir::new().unwrap();
+    let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/bypass-import-stub");
+    let staged = ext_dir.path().join("bypass-import-stub");
+    std::fs::copy(&fixture, &staged).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    // `source` doesn't need to exist for the stub; pass a dummy.
+    let src_dir = tempfile::TempDir::new().unwrap();
+    let src = src_dir.path().join("anything");
+    std::fs::write(&src, b"").unwrap();
+
+    bypass(&env)
+        .args(["import", "--from-ext", "stub"])
+        .arg(&src)
+        .env("PASSWORD_STORE_EXTENSIONS_DIR", ext_dir.path())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("imported 2 entries from ext:stub"));
+
+    // Both records landed at their slugged paths with the canonical
+    // entry-body shape.
+    bypass(&env)
+        .args(["show", "personal/email/gmail"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("hunter2"))
+        .stdout(predicate::str::contains("login: alice"))
+        .stdout(predicate::str::contains(
+            "otpauth: otpauth://totp/g?secret=ABC",
+        ))
+        .stdout(predicate::str::contains("url: https://gmail.com"));
+    bypass(&env)
+        .args(["show", "work/office365"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("p2"))
+        .stdout(predicate::str::contains("pin: 1234"))
+        .stdout(predicate::str::contains("company laptop"));
+}
+
+/// `--from-ext` and `--format` are mutually exclusive (clap should
+/// surface this via `conflicts_with`; defend in case clap behaviour
+/// changes).
+#[test]
+fn import_format_and_from_ext_are_mutually_exclusive() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let src_dir = tempfile::TempDir::new().unwrap();
+    let src = src_dir.path().join("anything");
+    std::fs::write(&src, b"").unwrap();
+
+    bypass(&env)
+        .args(["import", "--format", "csv", "--from-ext", "stub"])
+        .arg(&src)
+        .assert()
+        .failure();
+}

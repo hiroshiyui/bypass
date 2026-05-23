@@ -85,9 +85,17 @@ pub enum Command {
     /// `key: value` lines — the stderr "lossiness" summary at the
     /// end of the import names every transformation or drop.
     Import {
-        /// Source-vault format.
-        #[arg(long, value_enum)]
-        format: crate::import::Format,
+        /// Source-vault format. Mutually exclusive with `--from-ext`.
+        #[arg(long, value_enum, conflicts_with = "from_ext")]
+        format: Option<crate::import::Format>,
+        /// Invoke `bypass-import-<name>` (a pass-style extension at
+        /// `~/.password-store-extensions/`) to parse the source.
+        /// The extension emits newline-delimited JSON of
+        /// `ImportedEntry` records on stdout — see ADR-0029 and
+        /// `doc/extensions/importer-protocol.md`. Mutually
+        /// exclusive with `--format`.
+        #[arg(long)]
+        from_ext: Option<String>,
         /// Path to the export file.
         source: std::path::PathBuf,
         /// CSV column layout (required for `--format=csv`).

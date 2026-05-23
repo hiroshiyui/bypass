@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Test fixture: minimal importer extension that emits two NDJSON
+# `ImportedEntry` records on stdout. The integration test copies
+# this file into a per-test extensions dir, marks it executable,
+# and runs `bypass import --from-ext stub <source>`.
+#
+# Per ADR-0029:
+# - argv[1] is the source file (we ignore its contents — the test
+#   asserts the path is forwarded, but the body is irrelevant for
+#   this fixture).
+# - stdout = newline-delimited JSON, one ImportedEntry per line.
+# - stderr is the user's stderr (unused here).
+# - Exit 0 on success.
+
+set -euo pipefail
+
+# `${1:-}` so an unset argv[1] doesn't trip `-u`. Real extensions
+# would parse it; this fixture just records that we were called.
+src="${1:-<missing>}"
+>&2 echo "stub: invoked with src=$src"
+
+cat <<'JSON'
+{"folder":["personal","email"],"name":"Gmail","password":"hunter2","username":"alice","uris":["https://gmail.com"],"totp":"otpauth://totp/g?secret=ABC"}
+{"folder":["work"],"name":"Office365","password":"p2","fields":[["pin","1234"]],"notes":"company laptop"}
+JSON

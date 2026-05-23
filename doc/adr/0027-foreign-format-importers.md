@@ -2,7 +2,7 @@
 
 # Foreign-format importers: hybrid in-tree + extension model
 
-* Status: proposed
+* Status: proposed; extension wire format superseded by [ADR-0029](0029-importer-extension-wire-format.md)
 * Date: 2026-05-23
 * Deciders: hiroshiyui
 

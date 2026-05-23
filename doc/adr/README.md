@@ -47,3 +47,4 @@ Process and conventions are defined in
 | 0026 | [`backup` / `restore` for backup, migration, and GPG key rotation](0026-export-import-for-backup-and-rotation.md) | Proposed |
 | 0027 | [Foreign-format importers: hybrid in-tree + extension model](0027-foreign-format-importers.md) | Proposed |
 | 0028 | [Drop macOS as a supported target](0028-drop-macos-support.md) | Accepted |
+| 0029 | [Importer-extension wire format: newline-delimited JSON over stdout](0029-importer-extension-wire-format.md) | Accepted (amends 0027) |

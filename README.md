@@ -465,9 +465,15 @@ is one-way, foreign → bypass.
 
 First-party formats: **Bitwarden** plain-JSON, **KeePass / KeePassXC XML**,
 **generic CSV**.
-Anything else routes through a `bypass-import-<name>` extension
-(see [ADR-0027](doc/adr/0027-foreign-format-importers.md);
-extension dispatch surface lands later in Milestone 4.5).
+Anything else routes through a `bypass-import-<name>` extension —
+drop an executable at `~/.password-store-extensions/bypass-import-<name>`
+and invoke `bypass import --from-ext <name> <source-file>`. The
+extension emits newline-delimited JSON `ImportedEntry` records on
+stdout (no tar packing, no GPG); `bypass` runs them through the
+same canonical mapping the in-tree parsers use. See
+[ADR-0027](doc/adr/0027-foreign-format-importers.md),
+[ADR-0029](doc/adr/0029-importer-extension-wire-format.md), and
+[`doc/extensions/importer-protocol.md`](doc/extensions/importer-protocol.md).
 
 ### Bitwarden
 
