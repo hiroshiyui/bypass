@@ -64,6 +64,41 @@ pub enum Command {
         subtree: Option<String>,
     },
 
+    /// Ingest a foreign password manager's export into the current
+    /// store (ADR-0027). Each format has its own parser, but every
+    /// entry goes through the same canonical mapping (slugging,
+    /// in-batch collision suffixing, atomic-fail on store-side
+    /// collisions) before being encrypted to the destination's
+    /// `.gpg-id` recipients.
+    ///
+    /// `--format=bitwarden` expects a plain-JSON export (the file
+    /// `Tools → Export Vault` produces with the file password
+    /// *empty*); encrypted Bitwarden exports are not yet supported.
+    /// `--format=csv` requires `--csv-schema=<role1>,<role2>,...`
+    /// naming what each column is — see `bypass import --help`.
+    ///
+    /// Caveat: rich custom-field schemas from richer managers
+    /// (1Password, KeePass, ...) flatten lossily into bypass's
+    /// `key: value` lines — the stderr "lossiness" summary at the
+    /// end of the import names every transformation or drop.
+    Import {
+        /// Source-vault format.
+        #[arg(long, value_enum)]
+        format: crate::import::Format,
+        /// Path to the export file.
+        source: std::path::PathBuf,
+        /// CSV column layout (required for `--format=csv`).
+        /// Comma-separated list of role names:
+        /// `name`, `folder`, `password`, `username`, `url`, `totp`,
+        /// `notes`, `-` (skip). Any unknown role name is treated as
+        /// a custom field with that header.
+        #[arg(long)]
+        csv_schema: Option<String>,
+        /// Skip the first row of the CSV (treat it as a header).
+        #[arg(long)]
+        csv_has_header: bool,
+    },
+
     /// Ingest a `bypass backup` bundle into the current store.
     ///
     /// Default (fresh-store) mode requires the destination to be

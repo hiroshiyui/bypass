@@ -1601,3 +1601,198 @@ entries = 0
                 .or(predicate::str::contains("not supported")),
         );
 }
+
+// =============================================================
+// Milestone 4.5 — bypass import (ADR-0027)
+// =============================================================
+
+/// Bitwarden plain-JSON round-trip into a freshly-initialised store.
+/// Exercises the canonical mapping (folder split on `/`, custom
+/// fields → `key: value` lines, login → `login:`, totp → `otpauth:`,
+/// notes → free-form body) and the mandatory lossiness summary.
+#[test]
+fn import_bitwarden_into_fresh_store() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let src_dir = tempfile::TempDir::new().unwrap();
+    let src = src_dir.path().join("bw.json");
+    std::fs::write(
+        &src,
+        r#"{
+            "encrypted": false,
+            "folders": [{"id": "f1", "name": "Personal/Email"}],
+            "items": [
+                {
+                    "type": 1,
+                    "name": "GitHub",
+                    "folderId": "f1",
+                    "login": {
+                        "username": "alice",
+                        "password": "p4ss",
+                        "uris": [{"uri": "https://github.com"}],
+                        "totp": "otpauth://totp/g?secret=ABC"
+                    },
+                    "fields": [{"name": "recovery", "value": "kitten", "type": 0}],
+                    "notes": "freeform"
+                },
+                {"type": 3, "name": "Visa Card"}
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    let out = bypass(&env)
+        .args(["import", "--format", "bitwarden"])
+        .arg(&src)
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert!(
+        stderr.contains("imported 1 entry from Bitwarden"),
+        "stderr: {stderr}"
+    );
+    // Lossiness summary names the dropped card item.
+    assert!(stderr.contains("lossiness:"), "stderr: {stderr}");
+    assert!(stderr.contains("Visa Card"), "stderr: {stderr}");
+
+    // Path slugged from "Personal/Email" + "GitHub" → three segments.
+    bypass(&env)
+        .args(["show", "personal/email/github"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("p4ss"))
+        .stdout(predicate::str::contains("login: alice"))
+        .stdout(predicate::str::contains("recovery: kitten"))
+        .stdout(predicate::str::contains(
+            "otpauth: otpauth://totp/g?secret=ABC",
+        ))
+        .stdout(predicate::str::contains("url: https://github.com"))
+        .stdout(predicate::str::contains("freeform"));
+}
+
+/// Importing into a store that already has a colliding entry must
+/// refuse atomically — none of the bundle is written.
+#[test]
+fn import_refuses_atomically_on_store_collision() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "site/github"])
+        .write_stdin("prior")
+        .assert()
+        .success();
+
+    let src_dir = tempfile::TempDir::new().unwrap();
+    let src = src_dir.path().join("bw.json");
+    std::fs::write(
+        &src,
+        r#"{
+            "encrypted": false,
+            "folders": [{"id":"f1","name":"site"}],
+            "items": [
+                {"type":1,"name":"GitHub","folderId":"f1","login":{"password":"new"}},
+                {"type":1,"name":"Brand New","folderId":"f1","login":{"password":"new2"}}
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    bypass(&env)
+        .args(["import", "--format", "bitwarden"])
+        .arg(&src)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("site/github"));
+
+    // The prior entry must be untouched, and the second
+    // (non-colliding) item must NOT have been written.
+    bypass(&env)
+        .args(["show", "site/github"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("prior"));
+    bypass(&env)
+        .args(["show", "site/brand-new"])
+        .assert()
+        .failure();
+}
+
+/// CSV import: schema with mixed known roles + a custom-field column,
+/// header row skipped, multi-segment name slugging.
+#[test]
+fn import_csv_with_custom_field_column() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let src_dir = tempfile::TempDir::new().unwrap();
+    let src = src_dir.path().join("v.csv");
+    std::fs::write(
+        &src,
+        "Service,User,Pass,Site,Recovery\n\
+         Email/Work,alice@work,p2,https://mail.work,kitten\n\
+         GitHub,alice,p4ss,https://github.com,\n",
+    )
+    .unwrap();
+
+    bypass(&env)
+        .args(["import", "--format", "csv"])
+        .arg(&src)
+        .args([
+            "--csv-schema",
+            "name,username,password,url,Recovery",
+            "--csv-has-header",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("imported 2 entries from CSV"));
+
+    // Email/Work slugged into a 2-segment path.
+    bypass(&env)
+        .args(["show", "email/work"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("p2"))
+        .stdout(predicate::str::contains("login: alice@work"))
+        .stdout(predicate::str::contains("Recovery: kitten"))
+        .stdout(predicate::str::contains("url: https://mail.work"));
+
+    bypass(&env)
+        .args(["show", "github"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("p4ss"));
+}
+
+/// `--format=csv` without `--csv-schema` is a user error — exit
+/// non-zero with a clear message.
+#[test]
+fn import_csv_requires_schema() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let src_dir = tempfile::TempDir::new().unwrap();
+    let src = src_dir.path().join("v.csv");
+    std::fs::write(&src, "a,b\n").unwrap();
+
+    bypass(&env)
+        .args(["import", "--format", "csv"])
+        .arg(&src)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--csv-schema"));
+}

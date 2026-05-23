@@ -454,7 +454,64 @@ bypass git log --oneline | head -3   # → single `Re-encrypt store for new-key@
 * **`backup` / `restore` carry bypass-native bundles only.** For
   foreign vaults (Bitwarden, KeePass, LastPass, …) the design is
   `bypass import` per [ADR-0027](doc/adr/0027-foreign-format-importers.md);
-  that surface lands in Milestone 4.5.
+  see the next section.
+
+## Importing from another password manager
+
+`bypass import --format=<name>` ingests a foreign vault into the
+current store. The verb is deliberately distinct from
+`backup`/`restore` (which move bypass-native bundles only): `import`
+is one-way, foreign → bypass.
+
+First-party formats: **Bitwarden** plain-JSON, **generic CSV**.
+Anything else routes through a `bypass-import-<name>` extension
+(see [ADR-0027](doc/adr/0027-foreign-format-importers.md);
+extension dispatch surface lands later in Milestone 4.5).
+
+### Bitwarden
+
+In the Bitwarden web vault / desktop / mobile, run **Tools → Export
+Vault** with the file format set to `.json` and the file password
+left **empty** — encrypted exports are not yet supported.
+
+```sh
+bypass import --format=bitwarden ~/Downloads/bitwarden_export.json
+```
+
+Logins, secure notes, custom fields, TOTP URIs, and free-form notes
+all carry through. Card and identity items are skipped with a
+stderr "lossiness" line — they don't map cleanly to a single-
+password entry.
+
+### CSV
+
+Because every password manager exports CSV with a different column
+layout, you state your own:
+
+```sh
+bypass import \
+    --format=csv \
+    --csv-schema=name,username,password,url,notes \
+    --csv-has-header \
+    vault.csv
+```
+
+Role names you can pass: `name`, `folder`, `password`, `username`,
+`url`, `totp`, `notes`, `-` (skip a column). Anything else becomes a
+custom field with that header name. Multiple `url` columns become
+`url`, `url-2`, `url-3`, ….
+
+### What survives the import
+
+`bypass` prints a stderr summary at the end of every import that
+names every field it dropped, transformed (e.g. embedded newlines
+flattened), or had to disambiguate (in-batch path collisions are
+suffixed `-2`, `-3`, …). Read it before deleting the source vault.
+
+If the import would collide with an entry already in the destination
+store, `bypass` refuses atomically — none of the import is written —
+and prints the full list of conflicting paths. Either `rm` the
+prior entries or merge by hand.
 
 ## Browser extension (Firefox + Chrome)
 

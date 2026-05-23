@@ -18,5 +18,10 @@ tar = "0.4"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 
+# Foreign-format importers (ADR-0027 / Milestone 4.5).
+# Pure-Rust, no I/O — `bypass-core` stays platform-agnostic per ADR-0003.
+serde_json = "1"
+csv = "1"
+
 [lints.clippy]
 all = { level = "warn", priority = -1 }

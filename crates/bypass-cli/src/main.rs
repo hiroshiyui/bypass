@@ -8,6 +8,7 @@ mod crypto_gpg;
 mod doctor;
 mod edit;
 mod extensions;
+mod import;
 mod messaging_host;
 mod native_host_install;
 mod restore;
@@ -131,6 +132,12 @@ fn dispatch() -> Result<u8> {
         }
         Command::Backup { to, subtree } => backup::run(&to, subtree.as_deref()),
         Command::Restore { bundle, in_place } => restore::run(&bundle, in_place),
+        Command::Import {
+            format,
+            source,
+            csv_schema,
+            csv_has_header,
+        } => import::run(format, &source, csv_schema.as_deref(), csv_has_header),
         Command::Insert {
             path,
             force,
