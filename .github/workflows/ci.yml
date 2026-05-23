@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Continuous integration for `bypass`: build, lint and run the default
-# test suite on Linux and macOS for every push to `main` and every PR.
+# test suite on Linux for every push to `main` and every PR.
+# macOS support was dropped in ADR-0028.
 #
 # The `#[ignore]`-by-default integration tests (`sync_loopback`,
 # `sync_daemon`) are *not* run here — they need real networking and,
@@ -46,12 +47,8 @@ jobs:
               - '.github/workflows/ci.yml'
 
   test:
-    name: build + test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    name: build + test (ubuntu-latest)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -59,11 +56,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      # Linux runners ship gpg; macOS does not.
-      - name: Install GPG (macOS only)
-        if: runner.os == 'macOS'
-        run: brew install gnupg
 
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2

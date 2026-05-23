@@ -46,3 +46,4 @@ Process and conventions are defined in
 | 0025 | [Android UI architecture: Compose, single Activity, manual DI](0025-android-ui-architecture.md) | Accepted |
 | 0026 | [`backup` / `restore` for backup, migration, and GPG key rotation](0026-export-import-for-backup-and-rotation.md) | Proposed |
 | 0027 | [Foreign-format importers: hybrid in-tree + extension model](0027-foreign-format-importers.md) | Proposed |
+| 0028 | [Drop macOS as a supported target](0028-drop-macos-support.md) | Accepted |

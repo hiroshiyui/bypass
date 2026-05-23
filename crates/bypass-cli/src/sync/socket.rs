@@ -43,54 +43,32 @@ pub enum SocketError {
     },
 }
 
-/// Resolve the canonical socket path per ADR-0017.
+/// Resolve the canonical socket path per ADR-0017
+/// (amended by ADR-0028 to drop the macOS `$TMPDIR` / `/tmp`
+/// fallback chain).
 ///
-/// 1. `$XDG_RUNTIME_DIR/bypass-sync.sock` if that env var points at a
-///    non-empty directory.
-/// 2. `$TMPDIR/bypass-<uid>-sync.sock`.
-/// 3. `/tmp/bypass-<uid>-sync.sock`.
-///
-/// The `<uid>` suffix on the temp-dir variants is what makes the
-/// path per-user on shared `/tmp`; `$XDG_RUNTIME_DIR` is already
-/// per-user by definition.
+/// Returns `$XDG_RUNTIME_DIR/bypass-sync.sock`, or an error if
+/// `$XDG_RUNTIME_DIR` is unset/empty. The runtime-dir is the
+/// per-user, per-boot, auto-cleaned location every modern Linux
+/// daemon uses; if it isn't set, the user's session is mis-configured
+/// and we'd rather refuse than silently land the socket somewhere
+/// unexpected.
 pub fn default_socket_path() -> Result<PathBuf> {
-    Ok(resolve_socket_path(
-        std::env::var_os("XDG_RUNTIME_DIR"),
-        std::env::var_os("TMPDIR"),
-        current_uid(),
-    ))
+    resolve_socket_path(std::env::var_os("XDG_RUNTIME_DIR"))
 }
 
 /// Pure path-resolution rule used by [`default_socket_path`]. Lifted
 /// out so unit tests don't have to mutate process-wide env vars.
-fn resolve_socket_path(
-    xdg_runtime_dir: Option<std::ffi::OsString>,
-    tmpdir: Option<std::ffi::OsString>,
-    uid: u32,
-) -> PathBuf {
-    if let Some(dir) = xdg_runtime_dir
-        && !dir.is_empty()
-    {
-        return PathBuf::from(dir).join("bypass-sync.sock");
+fn resolve_socket_path(xdg_runtime_dir: Option<std::ffi::OsString>) -> Result<PathBuf> {
+    match xdg_runtime_dir {
+        Some(dir) if !dir.is_empty() => Ok(PathBuf::from(dir).join("bypass-sync.sock")),
+        _ => bail!(
+            "$XDG_RUNTIME_DIR is not set; cannot place the bypass-sync \
+             daemon socket. Typically set by your login session manager \
+             (e.g. systemd-logind). If you're running in a stripped-down \
+             environment, export it manually before starting the daemon."
+        ),
     }
-    let name = format!("bypass-{uid}-sync.sock");
-    let base = tmpdir
-        .filter(|d| !d.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
-    base.join(name)
-}
-
-fn current_uid() -> u32 {
-    // SAFETY: getuid is signal-safe and always succeeds.
-    unsafe { libc_getuid() }
-}
-
-// Tiny wrapper so we don't pull `libc` as a crate just for one symbol.
-// `std::os::unix::process::id` returns pid, not uid.
-unsafe extern "C" {
-    #[link_name = "getuid"]
-    fn libc_getuid() -> u32;
 }
 
 /// Bind a [`UnixListener`] at `path`, refusing if another daemon is
@@ -103,10 +81,9 @@ pub async fn bind_or_refuse_existing(path: &Path) -> Result<UnixListener> {
         // Try to talk to whoever is on the other end. A successful
         // connect means there's a live daemon; refuse. Anything else
         // — `ECONNREFUSED` from a crashed daemon's orphan socket,
-        // `ENOTSOCK` from a leftover regular file (macOS surfaces
-        // this as `Other` with errno 38), `ENOENT` from a race —
-        // means there is nothing live here, and we clear the path
-        // before re-binding.
+        // `ENOTSOCK` from a leftover regular file, `ENOENT` from a
+        // race — means there is nothing live here, and we clear the
+        // path before re-binding.
         match UnixStream::connect(path).await {
             Ok(_) => {
                 return Err(SocketError::AlreadyRunning {
@@ -142,7 +119,7 @@ pub async fn bind_or_refuse_existing(path: &Path) -> Result<UnixListener> {
     })?;
 
     // 0600 — only the daemon's uid can connect. Belt-and-braces on
-    // Linux's runtime-dir (already 0700); load-bearing on macOS /tmp.
+    // runtime-dir (already 0700); cheap to assert at the source.
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .with_context(|| format!("chmod 0600 {}", path.display()))?;
 
@@ -304,27 +281,21 @@ mod tests {
     }
 
     #[test]
-    fn resolve_prefers_xdg_runtime_dir() {
-        let p = resolve_socket_path(Some("/run/user/1000".into()), Some("/tmp".into()), 1000);
+    fn resolve_uses_xdg_runtime_dir() {
+        let p = resolve_socket_path(Some("/run/user/1000".into())).unwrap();
         assert_eq!(p, PathBuf::from("/run/user/1000/bypass-sync.sock"));
     }
 
     #[test]
-    fn resolve_falls_back_to_tmpdir_with_uid_suffix() {
-        let p = resolve_socket_path(None, Some("/var/folders/xx".into()), 501);
-        assert_eq!(p, PathBuf::from("/var/folders/xx/bypass-501-sync.sock"));
-    }
-
-    #[test]
-    fn resolve_falls_back_to_tmp_when_no_env_vars_set() {
-        let p = resolve_socket_path(None, None, 42);
-        assert_eq!(p, PathBuf::from("/tmp/bypass-42-sync.sock"));
+    fn resolve_errors_when_xdg_runtime_dir_unset() {
+        let err = resolve_socket_path(None).unwrap_err();
+        assert!(err.to_string().contains("XDG_RUNTIME_DIR"));
     }
 
     #[test]
     fn resolve_treats_empty_xdg_runtime_dir_as_unset() {
-        let p = resolve_socket_path(Some("".into()), Some("/tmp".into()), 7);
-        assert_eq!(p, PathBuf::from("/tmp/bypass-7-sync.sock"));
+        let err = resolve_socket_path(Some("".into())).unwrap_err();
+        assert!(err.to_string().contains("XDG_RUNTIME_DIR"));
     }
 
     #[tokio::test]

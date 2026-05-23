@@ -266,7 +266,7 @@ With the daemon running:
   (rate-limited per peer per
   [ADR-0016](doc/adr/0016-sync-dos-defences.md): 3 attempts / 60 s,
   pack-size cap 50 MB).
-- It watches the store for changes (via `inotify` / `FSEvents`) and
+- It watches the store for changes (via `inotify`) and
   pushes the new history to every paired peer it can reach.
 - It auto-discovers paired peers on the LAN via mDNS and dials
   them. (Requires the host's IPv4 multicast routes to be sane —
@@ -280,17 +280,17 @@ With the daemon running:
 `bypass sync status --json` emits the same snapshot in JSON for
 scripts and dashboards.
 
-#### Run as a service (systemd / launchd)
+#### Run as a service (systemd)
 
 `bypass sync daemon` runs in the foreground by default — handy
 for evaluation, not great for "always-on". The
 [ADR-0020](doc/adr/0020-daemon-service-supervision.md) service
-ops install a systemd user unit (Linux) or a launchd user agent
-(macOS) at the conventional per-user path, with the
+ops install a systemd user unit at the conventional per-user path
+(`~/.config/systemd/user/bypass-sync.service`), with the
 `bypass` binary's current path baked in:
 
 ```sh
-bypass sync daemon install   # write the unit / plist
+bypass sync daemon install   # write the unit
 bypass sync daemon start     # run it now (this session only)
 bypass sync daemon enable    # auto-start on every login
 
@@ -567,10 +567,9 @@ Common pitfalls:
   one. Three failed attempts in 60 s per peer trigger the
   ADR-0016 rate limit; wait it out.
 - **Peer never appears as `discovered: yes`** — mDNS needs
-  multicast routing to work. On Linux check
-  `ip route show table all | grep 224.0.0.0`. On macOS this
-  generally just works. As a fallback, use git-backed sync over a
-  shared remote.
+  multicast routing to work. Check
+  `ip route show table all | grep 224.0.0.0`. As a fallback, use
+  git-backed sync over a shared remote.
 - **`bypass sync` refuses to push** — the leak-check audit found
   something non-ciphertext. Run `bypass audit` to see what; fix
   it locally; re-run. Use `--force` only if you're sure.

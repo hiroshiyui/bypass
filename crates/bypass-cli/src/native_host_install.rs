@@ -87,49 +87,20 @@ pub fn uninstall() -> Result<u8> {
 fn firefox_paths() -> Result<Vec<PathBuf>> {
     let home = home_dir()?;
     let file = format!("{HOST_NAME}.json");
-    #[cfg(target_os = "macos")]
-    {
-        Ok(vec![
-            home.join(".mozilla/native-messaging-hosts").join(&file),
-            home.join("Library/Application Support/Mozilla/NativeMessagingHosts")
-                .join(&file),
-        ])
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Ok(vec![
-            home.join(".mozilla/native-messaging-hosts").join(&file),
-        ])
-    }
+    Ok(vec![
+        home.join(".mozilla/native-messaging-hosts").join(&file),
+    ])
 }
 
 fn chrome_paths() -> Result<Vec<PathBuf>> {
     let home = home_dir()?;
     let file = format!("{HOST_NAME}.json");
-    #[cfg(target_os = "macos")]
-    {
-        Ok(vec![
-            home.join("Library/Application Support/Google/Chrome/NativeMessagingHosts")
-                .join(&file),
-            home.join("Library/Application Support/Chromium/NativeMessagingHosts")
-                .join(&file),
-        ])
-    }
-    #[cfg(target_os = "linux")]
-    {
-        Ok(vec![
-            home.join(".config/google-chrome/NativeMessagingHosts")
-                .join(&file),
-            home.join(".config/chromium/NativeMessagingHosts")
-                .join(&file),
-        ])
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        let _ = home;
-        let _ = file;
-        Ok(vec![])
-    }
+    Ok(vec![
+        home.join(".config/google-chrome/NativeMessagingHosts")
+            .join(&file),
+        home.join(".config/chromium/NativeMessagingHosts")
+            .join(&file),
+    ])
 }
 
 fn home_dir() -> Result<PathBuf> {

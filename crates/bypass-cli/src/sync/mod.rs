@@ -46,22 +46,15 @@ use anyhow::{Context, Result};
 
 /// Resolve `$XDG_CONFIG_HOME/bypass` per
 /// [ADR-0015](../../../doc/adr/0015-device-identity-key.md). Honours
-/// `$XDG_CONFIG_HOME` if set (even on macOS, where `dirs::config_dir()`
-/// otherwise returns `~/Library/Application Support` — ADR-0015 wants
-/// XDG everywhere for fleet-consistency), falling back to `~/.config`
-/// on Linux + macOS, and `dirs::config_dir()` as a last-resort for
-/// any other platform `dirs` knows about.
+/// `$XDG_CONFIG_HOME` if set, otherwise falls back to `~/.config/bypass`.
 pub fn config_dir() -> Result<PathBuf> {
     if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME")
         && !xdg.is_empty()
     {
         return Ok(PathBuf::from(xdg).join("bypass"));
     }
-    if let Some(home) = dirs::home_dir() {
-        return Ok(home.join(".config").join("bypass"));
-    }
-    let dir = dirs::config_dir().context(
-        "cannot resolve $XDG_CONFIG_HOME (no fallback home dir either); set the variable manually",
+    let home = dirs::home_dir().context(
+        "cannot resolve $HOME (no fallback either); set $XDG_CONFIG_HOME or $HOME manually",
     )?;
-    Ok(dir.join("bypass"))
+    Ok(home.join(".config").join("bypass"))
 }

@@ -2,7 +2,7 @@
 
 # Sync-daemon service supervision: systemd user unit + launchd agent
 
-* Status: accepted
+* Status: macOS portion superseded by [ADR-0028](0028-drop-macos-support.md); Linux portion remains accepted
 * Date: 2026-05-22
 * Deciders: hiroshiyui
 

@@ -5,7 +5,7 @@
 //! The 5.2.c daemon ([`sync::daemon`](super::daemon)) wants to know
 //! when the store has changed so it can push the new history to
 //! paired peers. We wrap [`notify::RecommendedWatcher`] (inotify on
-//! Linux, FSEvents on macOS) with two pieces of policy:
+//! Linux) with two pieces of policy:
 //!
 //! 1. **Filter**: events under `<root>/.git/` are dropped. Without
 //!    this, our own pack-ingest writes (`git index-pack` into
@@ -47,16 +47,7 @@ const GIT_INTERNAL: &str = ".git";
 /// the underlying [`notify::Watcher`]; dropping it stops the
 /// watcher and closes the channel.
 pub fn watch(root: &Path) -> Result<WatcherHandle> {
-    // Canonicalise the watch path. On macOS, `/var/folders/...` is a
-    // symlink to `/private/var/folders/...` and FSEvents delivers
-    // event paths under the resolved location — comparing those to
-    // an un-canonicalised root makes every event look "outside the
-    // tree" and silently dropped. Canonicalising both sides keeps
-    // the prefix-match in `path_is_inside_git_dir` correct.
-    let root = root
-        .canonicalize()
-        .with_context(|| format!("canonicalize watch root {}", root.display()))?;
-
+    let root = root.to_path_buf();
     let (raw_tx, mut raw_rx) = mpsc::unbounded_channel::<notify::Result<notify::Event>>();
     let mut watcher = notify::recommended_watcher(move |res| {
         // Best-effort: if the daemon dropped the receiver, the
@@ -232,11 +223,8 @@ mod tests {
         let mut handle = watch(td.path()).unwrap();
 
         fs::write(td.path().join("entry.gpg"), b"ciphertext").unwrap();
-        // Allow the debounce window plus scheduling slack. macOS
-        // FSEvents has a built-in latency that adds ~1–2 s on top of
-        // the inotify-instant Linux path; 10 s comfortably covers
-        // both kernels including CI-runner noise.
-        let tick = tokio::time::timeout(Duration::from_secs(10), handle.rx().recv()).await;
+        // Debounce window plus scheduling slack for CI-runner noise.
+        let tick = tokio::time::timeout(Duration::from_secs(2), handle.rx().recv()).await;
         assert!(tick.is_ok() && tick.unwrap().is_some(), "expected a tick");
     }
 
@@ -248,13 +236,9 @@ mod tests {
         let mut handle = watch(td.path()).unwrap();
 
         fs::write(git.join("index"), b"git internal").unwrap();
-        // Wait the debounce window plus enough slack for macOS
-        // FSEvents to deliver — if a tick *was* going to land, it
-        // would have by now. Tight enough that the test fails
-        // quickly when the filter regresses; generous enough that
-        // FSEvents latency doesn't make it flaky.
+        // If a tick was going to land, it would by debounce + slack.
         let tick =
-            tokio::time::timeout(DEBOUNCE + Duration::from_secs(3), handle.rx().recv()).await;
+            tokio::time::timeout(DEBOUNCE + Duration::from_secs(1), handle.rx().recv()).await;
         assert!(tick.is_err(), "should have timed out; got {tick:?}");
     }
 }

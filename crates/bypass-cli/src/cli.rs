@@ -295,8 +295,8 @@ pub enum SyncCmd {
     ///
     /// With no sub-action, runs the daemon foreground. With one of
     /// `install` / `uninstall` / `start` / `stop` / `enable` /
-    /// `disable` / `status`, drives systemd (Linux) or launchd
-    /// (macOS) instead — see `bypass sync daemon <op> --help`.
+    /// `disable` / `status`, drives the systemd user unit instead
+    /// — see `bypass sync daemon <op> --help`.
     Daemon {
         #[command(subcommand)]
         action: Option<SyncDaemonCmd>,
@@ -339,11 +339,11 @@ pub enum SyncPeerCmd {
 /// foreground. See [ADR-0020](../../doc/adr/0020-daemon-service-supervision.md).
 #[derive(Debug, Subcommand)]
 pub enum SyncDaemonCmd {
-    /// Write the systemd user unit (Linux) or launchd plist
-    /// (macOS) so the daemon can be supervisor-managed. Does not
-    /// start the daemon or enable autostart — those are
-    /// explicit follow-up steps. Re-run after upgrading
-    /// `bypass` so the supervisor sees the new binary path.
+    /// Write the systemd user unit so the daemon can be
+    /// supervisor-managed. Does not start the daemon or enable
+    /// autostart — those are explicit follow-up steps. Re-run
+    /// after upgrading `bypass` so the supervisor sees the new
+    /// binary path.
     Install,
     /// Remove the supervisor file written by `install`.
     Uninstall,

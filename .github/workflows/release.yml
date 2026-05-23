@@ -30,12 +30,6 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             cross: true
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            cross: false
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            cross: false
     steps:
       - uses: actions/checkout@v4
 
@@ -72,13 +66,8 @@ jobs:
           cp LICENSE README.md "${STAGING}/"
           tar -czf "${STAGING}.tar.gz" "${STAGING}"
           # Per-target sha256 so SHA256SUMS at the release root can
-          # concatenate them. macOS ships `shasum`; Linux ships
-          # `sha256sum`. Normalise.
-          if command -v sha256sum >/dev/null; then
-            sha256sum "${STAGING}.tar.gz" > "${STAGING}.tar.gz.sha256"
-          else
-            shasum -a 256 "${STAGING}.tar.gz" > "${STAGING}.tar.gz.sha256"
-          fi
+          # concatenate them.
+          sha256sum "${STAGING}.tar.gz" > "${STAGING}.tar.gz.sha256"
 
       - name: Upload artefacts to workflow run
         uses: actions/upload-artifact@v4

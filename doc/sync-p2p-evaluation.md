@@ -36,7 +36,7 @@ Phase 5.2 is fully ticked.
 | **5.2.b.iii — hardening** | 50 MB pack-size cap, 3 / 60 s per-peer rate limit, two-process loopback integration test |
 | **5.2.c — daemon** | `bypass sync daemon` (foreground), `notify`-driven fs watcher, `bypass sync status`, `bypass sync peer rm`, mDNS discovery → auto-dial |
 | **5.2.d — two-peer & docs** | mDNS-driven insert→show round-trip integration test (`#[ignore]` by default; self-skips when host lacks IPv4 multicast routes), full README rewrite |
-| **Phase 6 service-supervision** (was Phase 5.2.c open question #2) | systemd user unit + launchd agent + `bypass sync daemon install/uninstall/start/stop/enable/disable/status` |
+| **Phase 6 service-supervision** (was Phase 5.2.c open question #2) | systemd user unit + `bypass sync daemon install/uninstall/start/stop/enable/disable/status` (macOS / launchd dropped per [ADR-0028](adr/0028-drop-macos-support.md)) |
 
 A separate [security audit](security-audit.md) (working doc, not
 committed) was performed against the post-Phase-6 tip and its
@@ -334,7 +334,8 @@ and [ADR-0017](adr/0017-daemon-socket-location.md),
 
 - `bypass sync daemon` is the long-running foreground process.
   Phase 6's `install` / `start` / `enable` / etc. subcommands
-  manage it via systemd (Linux) or launchd (macOS).
+  manage it via the systemd user unit (macOS / launchd dropped
+  per [ADR-0028](adr/0028-drop-macos-support.md)).
 - Holds the libp2p `Swarm` with mDNS enabled via
   [`Libp2pTransport`](../crates/bypass-cli/src/sync/libp2p_transport.rs).
   Watches the store directory through
@@ -383,10 +384,10 @@ to be possible for correctness.
 | Metadata / ordering | Git commit fields only; peer-ID lexical tie-breaker; no per-entry metadata | [0014](adr/0014-sync-metadata-and-ordering.md) |
 | Identity key | Ed25519 at `$XDG_CONFIG_HOME/bypass/identity.key`, 0600, libp2p protobuf | [0015](adr/0015-device-identity-key.md) |
 | DoS defences | 50 MB pack cap (symmetric); 3 / 60 s per-peer rate limit | [0016](adr/0016-sync-dos-defences.md) |
-| Daemon socket | `$XDG_RUNTIME_DIR/bypass-sync.sock` with macOS fallback chain; probe-then-bind | [0017](adr/0017-daemon-socket-location.md) |
+| Daemon socket | `$XDG_RUNTIME_DIR/bypass-sync.sock`; probe-then-bind (macOS fallback chain dropped per [0028](adr/0028-drop-macos-support.md)) | [0017](adr/0017-daemon-socket-location.md) |
 | Status protocol | Newline-delimited JSON; one `status` op; forward-extensible | [0018](adr/0018-daemon-status-protocol.md) |
 | Peer revocation | `bypass sync peer rm --yes`; history is final | [0019](adr/0019-peer-revocation-trust-semantics.md) |
-| Service supervision | systemd user unit (Linux) + launchd user agent (macOS); off by default | [0020](adr/0020-daemon-service-supervision.md) |
+| Service supervision | systemd user unit (Linux); off by default. macOS / launchd dropped per [0028](adr/0028-drop-macos-support.md) | [0020](adr/0020-daemon-service-supervision.md) |
 | Daemon location | `bypass-cli` for v1; `bypass-sync` split deferred indefinitely | covered in [0010](adr/0010-p2p-transport-libp2p.md) / [0013](adr/0013-sync-transport-trait.md) |
 | Scope | LAN only; 2–5 devices; eventual consistency in seconds | this doc |
 
@@ -408,9 +409,9 @@ navigable.
 2. **Daemon supervision** — **resolved**: deferred to
    [Phase 6 (Polish)](ROADMAP.md#phase-6--polish). Sub-milestone
    5.2.c ships the daemon itself runnable in the foreground;
-   Phase 6 adds the cross-platform service-management glue
-   (systemd user unit on Linux, launchd agent on macOS) with the
-   matching `start`/`stop`/`status`/`enable` UX.
+   Phase 6 adds the systemd user unit with the matching
+   `start`/`stop`/`status`/`enable` UX (launchd agent dropped
+   per [ADR-0028](adr/0028-drop-macos-support.md)).
 3. **`.gitattributes` for `.gpg` files** — **resolved**:
    `bypass init` now writes `.gitattributes` with `*.gpg binary`;
    `bypass sync` lazily installs the rule on stores that pre-date
@@ -470,9 +471,9 @@ ADRs as 5.2.a–5.2.c shipped; 13 and 14 are intentionally deferred
 
 9. **Daemon socket location and multi-instance prevention** —
    **resolved** in [ADR-0017](adr/0017-daemon-socket-location.md):
-   `$XDG_RUNTIME_DIR/bypass-sync.sock` on Linux with a documented
-   `$TMPDIR/bypass-<uid>-sync.sock` → `/tmp/` fallback chain on
-   macOS; `0600` perms; probe-then-bind multi-instance check
+   `$XDG_RUNTIME_DIR/bypass-sync.sock` on Linux (macOS fallback
+   chain dropped per [ADR-0028](adr/0028-drop-macos-support.md));
+   `0600` perms; probe-then-bind multi-instance check
    (no pidfile).
 
 10. **`bypass sync status` output shape** — **resolved** in

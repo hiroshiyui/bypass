@@ -13,7 +13,16 @@ dated heading and the running notes will start a fresh
 
 ## [Unreleased]
 
-_No changes yet._
+### Removed
+
+- **macOS support dropped entirely** ([ADR-0028](doc/adr/0028-drop-macos-support.md)).
+  CI matrix shrinks to `ubuntu-latest`; release artefacts drop
+  `x86_64-apple-darwin` and `aarch64-apple-darwin`. The launchd
+  half of the daemon service-supervision glue
+  ([ADR-0020](doc/adr/0020-daemon-service-supervision.md)) and the
+  `$TMPDIR` / `/tmp` socket fallback chain
+  ([ADR-0017](doc/adr/0017-daemon-socket-location.md)) are gone;
+  systemd user units and `$XDG_RUNTIME_DIR` are the only paths.
 
 ## [0.1.0] - 2026-05-23
 

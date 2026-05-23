@@ -210,11 +210,11 @@ Actual dependencies as of Phase 5.2:
 - [x] Man page generation (`bypass man`)
 - [x] Migration helper from `pass` (no-op — same on-disk format per [ADR-0002](adr/0002-pass-compatible-on-disk-layout.md); see README "Migrating from `pass`")
 - [x] Integration tests covering full CRUD + git flows ([`tests/end_to_end.rs`](../crates/bypass-cli/tests/end_to_end.rs): 36 tests; [`tests/sync_loopback.rs`](../crates/bypass-cli/tests/sync_loopback.rs) + [`tests/sync_daemon.rs`](../crates/bypass-cli/tests/sync_daemon.rs) `#[ignore]`-by-default)
-- [x] CI: build + test on Linux/macOS ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml))
-- [x] Release packaging ([`.github/workflows/release.yml`](../.github/workflows/release.yml) + [ADR-0021](adr/0021-release-packaging.md): hand-rolled, four Unix targets on `v*` tags)
+- [x] CI: build + test on Linux ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml); macOS dropped per [ADR-0028](adr/0028-drop-macos-support.md))
+- [x] Release packaging ([`.github/workflows/release.yml`](../.github/workflows/release.yml) + [ADR-0021](adr/0021-release-packaging.md): hand-rolled, two Linux targets on `v*` tags; the two darwin targets are removed per [ADR-0028](adr/0028-drop-macos-support.md))
 - [x] Sync-daemon service integration (`install` / `uninstall` / `start` / `stop` / `enable` / `disable` / `status`, per [ADR-0020](adr/0020-daemon-service-supervision.md)):
   - [x] Linux: systemd user unit at `~/.config/systemd/user/bypass-sync.service`, managed via `systemctl --user`
-  - [x] macOS: launchd agent at `~/Library/LaunchAgents/io.bypass.sync.plist`, managed via `launchctl bootstrap`/`bootout`/`kickstart`/`print`
+  - ~~macOS: launchd agent at `~/Library/LaunchAgents/io.bypass.sync.plist`~~ removed per [ADR-0028](adr/0028-drop-macos-support.md)
   - Resolves the Phase 5.2 daemon-supervision open question recorded in [`doc/sync-p2p-evaluation.md`](sync-p2p-evaluation.md)
 - [x] **CLI workflow eval** — exercised the full surface against a throwaway keyring; closed seven findings (commits `52f6349` + `e507a43`):
   - [x] **F1** `bypass init` refuses to overwrite an existing `.gpg-id` unless `--force`

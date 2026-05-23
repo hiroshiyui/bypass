@@ -2,7 +2,7 @@
 
 # Release packaging: hand-rolled GitHub Actions workflow for v0.1.x
 
-* Status: accepted
+* Status: accepted; amended by [ADR-0028](0028-drop-macos-support.md) (darwin targets dropped)
 * Date: 2026-05-22
 * Deciders: hiroshiyui
 

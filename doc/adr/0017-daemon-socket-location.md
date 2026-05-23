@@ -2,7 +2,7 @@
 
 # Sync-daemon socket location and multi-instance prevention
 
-* Status: accepted
+* Status: accepted; amended by [ADR-0028](0028-drop-macos-support.md) (macOS fallback chain dropped)
 * Date: 2026-05-22
 * Deciders: hiroshiyui
 
