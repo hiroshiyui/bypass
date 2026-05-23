@@ -41,6 +41,28 @@ pub const DAEMON_SUBCOMMAND: &str = "__clipboard-set";
 /// daemon takes ownership of the clipboard and restores it after
 /// `seconds`. The caller does not block.
 pub fn copy_and_auto_clear(password: &[u8], seconds: u64) -> Result<()> {
+    // CLI eval F7: probe the system clipboard from the foreground
+    // BEFORE we spawn the detached daemon, so a missing display
+    // server / clipboard helper surfaces as a clear error instead
+    // of a "Copied to clipboard…" lie followed by silent daemon
+    // death. `arboard::Clipboard::new()` opens the X11 / Wayland
+    // connection on first call; a tty-only session (no DISPLAY,
+    // no WAYLAND_DISPLAY) fails here.
+    //
+    // We drop the probe immediately — the daemon constructs its
+    // own handle. There is still a (very narrow) race where the
+    // display server disappears between probe and daemon, but in
+    // practice the probe catches every realistic "Wrong terminal"
+    // failure mode.
+    if let Err(e) = arboard::Clipboard::new() {
+        bail!(
+            "no system clipboard available: {e}. Install one of \
+            `xclip`, `xsel`, or `wl-clipboard` for the active \
+            display server, or omit `-c` / `--clip` to print to \
+            stdout.",
+        );
+    }
+
     let exe = std::env::current_exe().context("locate self exe")?;
     let mut child = Command::new(&exe)
         .arg(DAEMON_SUBCOMMAND)

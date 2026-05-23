@@ -292,6 +292,159 @@ fn insert_refuses_empty_plaintext() {
 }
 
 #[test]
+fn init_prints_confirmation_to_stderr() {
+    // CLI eval F3: success on init was previously silent. Confirm
+    // the new stderr message names both the path and the recipient.
+    let env = common::TestEnv::new();
+    let out = bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(
+        stderr.contains("initialised store"),
+        "stderr was {stderr:?}"
+    );
+    assert!(
+        stderr.contains(common::TEST_RECIPIENT),
+        "stderr was {stderr:?}"
+    );
+}
+
+#[test]
+fn insert_and_update_distinguish_verbs() {
+    // CLI eval F3: `added` for a fresh insert, `updated` when
+    // `--force` overwrites. The verb tells the user at a glance
+    // which branch they hit.
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let out = bypass(&env)
+        .args(["insert", "foo"])
+        .write_stdin("v1")
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(stderr.contains("added foo"), "stderr was {stderr:?}");
+
+    let out = bypass(&env)
+        .args(["insert", "--force", "foo"])
+        .write_stdin("v2")
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(stderr.contains("updated foo"), "stderr was {stderr:?}");
+}
+
+#[test]
+fn generate_distinguishes_added_rotated_updated() {
+    // CLI eval F3: `added` for first insert, `rotated` for `-i`,
+    // `updated` for `-f`.
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let out = bypass(&env)
+        .args(["generate", "auto/api"])
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(stderr.contains("added auto/api"), "stderr was {stderr:?}");
+
+    let out = bypass(&env)
+        .args(["generate", "-i", "auto/api"])
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(stderr.contains("rotated auto/api"), "stderr was {stderr:?}");
+
+    let out = bypass(&env)
+        .args(["generate", "-f", "auto/api"])
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(stderr.contains("updated auto/api"), "stderr was {stderr:?}");
+}
+
+#[test]
+fn find_with_no_matches_exits_1_with_message() {
+    // CLI eval F5: silent zero-match exit was awkward to script
+    // against. Now stderr message + exit 1.
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "email/work"])
+        .write_stdin("hunter2")
+        .assert()
+        .success();
+
+    let out = bypass(&env).args(["find", "xyzzy"]).assert().failure();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(
+        stderr.contains("no entries matching"),
+        "stderr was {stderr:?}"
+    );
+    assert!(stderr.contains("\"xyzzy\""), "stderr was {stderr:?}");
+
+    // A find with a match must still exit 0 + write to stdout.
+    bypass(&env)
+        .args(["find", "email"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("email/work"));
+}
+
+#[test]
+fn bypass_git_warns_before_destructive_reset_hard() {
+    // CLI eval F6: soft-warn before passthrough runs destructive
+    // subcommands. The warning goes to stderr; the command still
+    // runs (we don't second-guess the user).
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+    bypass(&env)
+        .args(["insert", "x"])
+        .write_stdin("v1")
+        .assert()
+        .success();
+
+    let out = bypass(&env)
+        .args(["git", "reset", "--hard", "HEAD"])
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(
+        stderr.contains("destructive"),
+        "warning should be on stderr; got {stderr:?}"
+    );
+    assert!(
+        stderr.contains("reset --hard"),
+        "warning should name the command; got {stderr:?}"
+    );
+
+    // A safe subcommand (`status`) must NOT trigger the warning.
+    let out = bypass(&env)
+        .args(["git", "status", "--short"])
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).into_owned();
+    assert!(
+        !stderr.contains("destructive"),
+        "status must not warn; got {stderr:?}"
+    );
+}
+
+#[test]
 fn log_shows_full_and_filtered_history() {
     let env = common::TestEnv::new();
     bypass(&env)

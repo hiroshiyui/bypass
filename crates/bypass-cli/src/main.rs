@@ -112,11 +112,19 @@ fn dispatch() -> Result<u8> {
                 );
             }
             let mut store = open_store()?;
-            let keys: Vec<KeyId> = gpg_ids.into_iter().map(KeyId::new).collect();
+            let keys: Vec<KeyId> = gpg_ids.iter().cloned().map(KeyId::new).collect();
             store.init(&keys).map_err(map_store_err)?;
             // Register the merge driver referenced by `.gitattributes`
             // (see ADR-0011). Idempotent; safe to run on every init.
             sync::merge_driver::register_in_git_config(&root)?;
+            // CLI eval F3: print a one-line confirmation so success
+            // is observable, matching the `copied/renamed/removed`
+            // style cp/mv/rm already use.
+            eprintln!(
+                "initialised store at {} for {}",
+                root.display(),
+                gpg_ids.join(", "),
+            );
             Ok(0)
         }
         Command::Insert {
@@ -142,6 +150,9 @@ fn dispatch() -> Result<u8> {
             store
                 .insert(&entry, plaintext.as_slice(), force)
                 .map_err(map_store_err)?;
+            // CLI eval F3: confirm. Verb differs by branch so the
+            // user can tell at a glance whether they hit overwrite.
+            eprintln!("{} {entry}", if force { "updated" } else { "added" },);
             Ok(0)
         }
         Command::Show { path, field, clip } => {
@@ -217,6 +228,13 @@ fn dispatch() -> Result<u8> {
         Command::Find { pattern } => {
             let store = open_store()?;
             let entries = store.find(&pattern).map_err(map_store_err)?;
+            if entries.is_empty() {
+                // CLI eval F5: silent zero-match exit is awkward to
+                // script against and gives no UX feedback. Match
+                // `pass`'s convention: stderr message, exit 1.
+                eprintln!("bypass: no entries matching {pattern:?}");
+                return Ok(1);
+            }
             for e in entries {
                 println!("{e}");
             }
@@ -288,6 +306,19 @@ fn dispatch() -> Result<u8> {
                 // doesn't impl `Display`).
                 println!("{}", &*password);
             }
+            // CLI eval F3: status on stderr (so `bypass generate foo
+            // > pw.txt` still captures only the password). Verb
+            // tells the user whether they hit the in-place branch.
+            eprintln!(
+                "{} {entry}",
+                if in_place {
+                    "rotated"
+                } else if force {
+                    "updated"
+                } else {
+                    "added"
+                },
+            );
             Ok(0)
         }
         Command::Cp { from, to, force } => {
@@ -358,6 +389,14 @@ fn dispatch() -> Result<u8> {
         Command::Audit => audit_cmd(),
         Command::Git { args } => {
             let root = StorageFs::resolve_default_root().context("resolve store root")?;
+            // CLI eval F6: soft-warn before destructive subcommands.
+            // The passthrough's whole point is to let the user reach
+            // for git when bypass's CRUD isn't enough, so we don't
+            // refuse or prompt — just one line on stderr that mentions
+            // the risk + the recovery path.
+            if let Some(warning) = warn_destructive_git_args(&args) {
+                eprintln!("bypass: {warning}");
+            }
             let status = std::process::Command::new("git")
                 .arg("-C")
                 .arg(&root)
@@ -389,6 +428,70 @@ fn open_store() -> Result<Store<GpgCli, StorageFs, Git2Vcs>> {
 
 fn parse_entry(s: &str) -> Result<RelPath> {
     RelPath::new(s).map_err(|e| anyhow!("invalid entry path: {e}"))
+}
+
+/// Return a short warning if `args` looks like a git invocation
+/// that will mutate working-tree state irreversibly. Returns
+/// `None` for safe-by-default commands (`status`, `log`, `diff`,
+/// `pull`, …). The warning never refuses — `bypass git` is a
+/// passthrough by design — but it nudges the user to think twice
+/// before pressing enter.
+///
+/// Conservative pattern-matching: only triggers on known shapes
+/// that have no benign overload. False negatives are fine (worst
+/// case: same UX as before this function existed). False
+/// positives are noise we want to avoid.
+fn warn_destructive_git_args(args: &[String]) -> Option<&'static str> {
+    // Skip leading `-c key=val` global options so we look at the
+    // actual verb.
+    let verbs: Vec<&str> = args
+        .iter()
+        .skip_while(|a| a.starts_with('-'))
+        .map(String::as_str)
+        .collect();
+    let (verb, rest) = match verbs.split_first() {
+        Some((v, r)) => (*v, r),
+        None => return None,
+    };
+    match verb {
+        "reset" if rest.contains(&"--hard") => Some(
+            "destructive: `git reset --hard` discards every uncommitted change \
+                under the store. There is no undo. Run `bypass git status` first \
+                if you're unsure.",
+        ),
+        "clean"
+            if rest
+                .iter()
+                .any(|a| matches!(*a, "-f" | "-fd" | "-fdx" | "--force")) =>
+        {
+            Some(
+                "destructive: `git clean` permanently deletes untracked files. \
+                If you have plaintext drafts (e.g. from a crashed `bypass edit`) \
+                they will not be shredded — they will just be unlinked.",
+            )
+        }
+        "checkout" if rest.iter().any(|a| *a == "." || *a == "--") => Some(
+            "destructive: `git checkout .` / `git checkout --` overwrites \
+                working-tree files with their committed contents. Uncommitted \
+                changes are lost without an undo.",
+        ),
+        "branch" if rest.contains(&"-D") => Some(
+            "destructive: `git branch -D` deletes a branch even when \
+                unmerged. If that branch held commits not on `main`, they \
+                will be unreachable until garbage collection.",
+        ),
+        "push"
+            if rest
+                .iter()
+                .any(|a| matches!(*a, "--force" | "-f" | "--force-with-lease")) =>
+        {
+            Some(
+                "destructive: `git push --force` rewrites remote history. Other \
+                paired devices will see a non-fast-forward on their next sync.",
+            )
+        }
+        _ => None,
+    }
 }
 
 fn read_secret_from_stdin(multiline: bool) -> Result<Zeroizing<Vec<u8>>> {
