@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-# `export` / `import` for backup, migration, and GPG key rotation
+# `backup` / `restore` for backup, migration, and GPG key rotation
 
 * Status: proposed
 * Date: 2026-05-23
@@ -48,32 +48,39 @@ different) one, with no plaintext on disk and no half-rotated state.
   shaped tools. `export` emits plaintext (stdout); `import` ingests
   plaintext and re-encrypts to whatever `.gpg-id` the destination
   resolves. Rotation is `bypass export | bypass --store <new> import`.
-* **C. Generic `export-encrypted --to <key>` + `import`.** Like B, but
-  the export tarball is always wrapped in a single outer GPG
+* **C. Generic `backup --to <key>` + `restore`.** Like B, but
+  the backup tarball is always wrapped in a single outer GPG
   encryption to a caller-specified key. Plaintext never leaves the
-  process boundary except through `gpg --decrypt` during import.
-* **D. `export-encrypted` *and* `import`, both in-place and to a new
-  store.** Option C plus an `import --in-place` mode that rewrites the
+  process boundary except through `gpg --decrypt` during restore.
+* **D. `backup` *and* `restore`, both in-place and to a new
+  store.** Option C plus a `restore --in-place` mode that rewrites the
   *existing* git repo entry-by-entry instead of importing into a
   freshly-initialised store, preserving history and (importantly) not
   breaking the git ancestry shared with sync peers.
 
 ## Decision Outcome
 
-Chosen option: **D — `export-encrypted` plus `import` with both
+Chosen option: **D — `backup` plus `restore` with both
 `--in-place` and fresh-store modes; no plaintext `export`.**
+
+The verbs `backup`/`restore` are deliberately distinct from the
+foreign-format `import` introduced in
+[ADR-0027](0027-foreign-format-importers.md): `backup`/`restore`
+operate on bypass-native bundles (bypass → bypass), while `import`
+ingests *foreign* vaults (Bitwarden, KeePass, …). One verb per
+direction, with no overlap.
 
 The surface:
 
 ```text
-bypass export-encrypted --to <recipient> [--subtree <path>]  >  vault.tar.gpg
-bypass import vault.tar.gpg                       # into a fresh, init'd store
-bypass import --in-place vault.tar.gpg            # rewrite the current store
+bypass backup --to <recipient> [--subtree <path>]  >  vault.tar.gpg
+bypass restore vault.tar.gpg                       # into a fresh, init'd store
+bypass restore --in-place vault.tar.gpg            # rewrite the current store
 ```
 
 Semantics:
 
-* `export-encrypted` decrypts every entry under `<subtree>` (default:
+* `backup` decrypts every entry under `<subtree>` (default:
   store root) with the current `.gpg-id` recipients, packages the
   *plaintexts* plus a manifest (paths, mtimes, original recipient
   list) into a tar stream, and pipes that stream through `gpg
@@ -83,11 +90,11 @@ Semantics:
   decrypted blob between read and tar-write
   ([ADR-0001](0001-platform-delegated-crypto.md) keeps us out of the
   OpenPGP layer; we only own the plaintext in transit).
-* For a **rotation**, `<recipient>` is the *new* key. The exported
-  bundle is therefore already keyed to whatever `import` will write
-  back out — no double-decrypt, no re-encrypt step on import beyond
+* For a **rotation**, `<recipient>` is the *new* key. The backed-up
+  bundle is therefore already keyed to whatever `restore` will write
+  back out — no double-decrypt, no re-encrypt step on restore beyond
   the per-entry one.
-* `import` decrypts the outer tarball with `gpg`, streams the inner
+* `restore` decrypts the outer tarball with `gpg`, streams the inner
   tar through our reader, and for each entry calls
   `storage_fs::overwrite_then_unlink` on any prior file at that path
   before writing the freshly-encrypted blob
@@ -96,7 +103,7 @@ Semantics:
   the per-entry encryption targets the new recipient), and the whole
   operation is wrapped in a single git commit:
   `Re-encrypt store for <new-key>`.
-* In fresh-store mode, `import` requires the target store to have
+* In fresh-store mode, `restore` requires the target store to have
   been initialised (`bypass init <new-key>`) and to be empty. This
   preserves the "no surprise overwrites" rule from `main.rs:94-113`.
 
@@ -110,19 +117,19 @@ Reasoning:
   enough to defer; if we add them later, gating behind
   `--i-know-what-im-doing` and stdout-only is the form.
 * **Inner re-encryption, not just outer wrapping.** A naïve
-  `export-encrypted` could just tar the existing `*.gpg` files and
+  `backup` could just tar the existing `*.gpg` files and
   wrap the tar — but the inner blobs would still be encrypted to the
   *old* key, so the bundle would be useless for rotation (whoever
   decrypts the tar still can't read the entries without the old
-  private key). Making `export-encrypted` always re-encrypt the inner
+  private key). Making `backup` always re-encrypt the inner
   plaintexts to `--to` collapses backup and rotation into one
   primitive.
-* **Two import modes, not one.** Fresh-store import is the cleanest
+* **Two restore modes, not one.** Fresh-store restore is the cleanest
   semantically: atomic, no half-state, easy to reason about. But it
   discards git history and — critically for Phase 5.2 sync — breaks
   the shared git ancestry with paired peers
   ([ADR-0011](0011-sync-semantics-hybrid.md), [ADR-0014](0014-sync-metadata-and-ordering.md)).
-  Peers would treat the imported store as a divergent history and
+  Peers would treat the restored store as a divergent history and
   refuse to fast-forward. `--in-place` preserves ancestry at the cost
   of one large rewrite commit, which peers *can* pull cleanly. Users
   rotating a solo store will reach for fresh-store; users on a
@@ -142,11 +149,11 @@ Reasoning:
 * Good: rotation has no half-rotated intermediate state — either the
   new commit lands or it doesn't, and the old store is untouched
   until the new ciphertexts are written.
-* Good: `export-encrypted` output is a useful artefact in its own
+* Good: `backup` output is a useful artefact in its own
   right — a self-contained, GPG-sealed snapshot that doesn't depend
   on the rest of the bypass installation to restore from.
 * Bad: plaintext lives in process memory (as `SecretBytes`) for the
-  entire export pass. For a large store this means N entries'
+  entire backup pass. For a large store this means N entries'
   plaintexts pass through RAM in sequence; we should stream one entry
   at a time through the tar writer rather than buffering the whole
   bundle, and rely on `SecretBytes`' zeroize-on-drop between entries.
@@ -155,7 +162,7 @@ Reasoning:
   the old `*.gpg` blobs they captured are still readable. Rotation
   is forward-confidentiality only; users who need stronger
   guarantees must also roll the underlying *passwords*. This needs
-  to be documented in the `bypass export-encrypted` help text.
+  to be documented in the `bypass backup` help text.
 * Bad: in `--in-place` mode, the rewrite commit is large (touches
   every blob) and will dominate the git history. Acceptable, but
   worth a heads-up in the help text.
@@ -165,7 +172,7 @@ Reasoning:
   Note this in the docs.
 * Neutral: tar format choice (ustar vs pax) and manifest schema are
   implementation details, but the manifest *must* include a format
-  version field so future imports can refuse incompatible bundles
+  version field so future restores can refuse incompatible bundles
   rather than mis-parse them.
 
 ### Confirmation
@@ -175,7 +182,7 @@ Reasoning:
   the design described here was executed.
 * Tests live in `crates/bypass-cli/tests/end_to_end.rs` (default
   suite): a round-trip test that initialises a store with key A,
-  inserts entries, runs `export-encrypted --to B`, imports into a
+  inserts entries, runs `backup --to B`, restores into a
   fresh store initialised with key B, and asserts every entry
   decrypts with the same plaintext. A second test exercises
   `--in-place` and asserts the git log shows a single rewrite commit
