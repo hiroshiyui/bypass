@@ -463,7 +463,8 @@ current store. The verb is deliberately distinct from
 `backup`/`restore` (which move bypass-native bundles only): `import`
 is one-way, foreign → bypass.
 
-First-party formats: **Bitwarden** plain-JSON, **generic CSV**.
+First-party formats: **Bitwarden** plain-JSON, **KeePass / KeePassXC XML**,
+**generic CSV**.
 Anything else routes through a `bypass-import-<name>` extension
 (see [ADR-0027](doc/adr/0027-foreign-format-importers.md);
 extension dispatch surface lands later in Milestone 4.5).
@@ -482,6 +483,26 @@ Logins, secure notes, custom fields, TOTP URIs, and free-form notes
 all carry through. Card and identity items are skipped with a
 stderr "lossiness" line — they don't map cleanly to a single-
 password entry.
+
+### KeePass / KeePassXC
+
+`bypass` reads the **XML export** from KeePass 2.x and KeePassXC,
+not the binary `.kdbx` database (which is encrypted and would need
+the master password to unlock — out of scope for v1).
+
+In KeePass / KeePassXC: `File → Export → KeePass XML (2.x)`.
+
+```sh
+bypass import --format=keepass ~/Downloads/passwords.xml
+```
+
+Nested groups become subtree paths (the outermost database-name
+group is dropped so `Email/Gmail` doesn't end up under
+`mydatabase/email/gmail`). `Title`, `UserName`, `Password`, `URL`,
+`Notes`, and `otp` (KeePassXC convention) map to the standard
+bypass entry fields; any other `<String>` becomes a custom field.
+Entry attachments (`<Binary>` references) are dropped with a
+lossiness line.
 
 ### CSV
 

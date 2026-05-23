@@ -22,6 +22,10 @@ toml = "0.8"
 # Pure-Rust, no I/O — `bypass-core` stays platform-agnostic per ADR-0003.
 serde_json = "1"
 csv = "1"
+# KeePass KDBX-XML exports — DOM-style traversal of a one-shot
+# export is simpler than streaming with `quick-xml`. Pure-Rust,
+# no_std-friendly, small dep surface.
+roxmltree = "0.20"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

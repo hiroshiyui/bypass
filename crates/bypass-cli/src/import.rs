@@ -25,6 +25,7 @@ use bypass_core::path::RelPath;
 pub enum Format {
     Bitwarden,
     Csv,
+    Keepass,
 }
 
 pub fn run(
@@ -52,6 +53,12 @@ pub fn run(
             bypass_core::import::csv::parse(&bytes[..], &schema, csv_has_header)
                 .context("parse CSV import")?
         }
+        Format::Keepass => {
+            if csv_schema.is_some() {
+                bail!("--csv-schema is not applicable to --format=keepass");
+            }
+            bypass_core::import::keepass::parse(&bytes).context("parse KeePass XML export")?
+        }
     };
 
     if entries.is_empty() {
@@ -77,6 +84,7 @@ pub fn run(
     let label = match format {
         Format::Bitwarden => "Bitwarden",
         Format::Csv => "CSV",
+        Format::Keepass => "KeePass",
     };
     let n = blobs.len();
     if !blobs.is_empty() {

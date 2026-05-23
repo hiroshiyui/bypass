@@ -74,8 +74,11 @@ pub enum Command {
     /// `--format=bitwarden` expects a plain-JSON export (the file
     /// `Tools → Export Vault` produces with the file password
     /// *empty*); encrypted Bitwarden exports are not yet supported.
-    /// `--format=csv` requires `--csv-schema=<role1>,<role2>,...`
-    /// naming what each column is — see `bypass import --help`.
+    /// `--format=keepass` expects a KeePass / KeePassXC **XML export**
+    /// (`File → Export → KeePass XML (2.x)`), *not* the binary
+    /// `.kdbx` database. `--format=csv` requires
+    /// `--csv-schema=<role1>,<role2>,...` naming what each column is
+    /// — see `bypass import --help`.
     ///
     /// Caveat: rich custom-field schemas from richer managers
     /// (1Password, KeePass, ...) flatten lossily into bypass's

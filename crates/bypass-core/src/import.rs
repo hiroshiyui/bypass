@@ -28,6 +28,7 @@ use crate::path::RelPath;
 
 pub mod bitwarden;
 pub mod csv;
+pub mod keepass;
 
 /// One entry as it comes out of a foreign-format parser, before
 /// slugging, collision resolution, or serialisation to the bypass

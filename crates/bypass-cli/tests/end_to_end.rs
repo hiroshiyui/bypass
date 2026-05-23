@@ -1796,3 +1796,59 @@ fn import_csv_requires_schema() {
         .failure()
         .stderr(predicate::str::contains("--csv-schema"));
 }
+
+/// KeePass XML import: nested groups become subtree paths; the
+/// outermost group name (the database name) is dropped; custom
+/// fields, otp, and notes carry through.
+#[test]
+fn import_keepass_xml_into_fresh_store() {
+    let env = common::TestEnv::new();
+    bypass(&env)
+        .args(["init", common::TEST_RECIPIENT])
+        .assert()
+        .success();
+
+    let src_dir = tempfile::TempDir::new().unwrap();
+    let src = src_dir.path().join("v.xml");
+    std::fs::write(
+        &src,
+        r#"<?xml version="1.0"?>
+<KeePassFile>
+  <Meta><DatabaseName>Test</DatabaseName></Meta>
+  <Root>
+    <Group>
+      <Name>NewDatabase</Name>
+      <Group>
+        <Name>Email</Name>
+        <Entry>
+          <String><Key>Title</Key><Value>Gmail</Value></String>
+          <String><Key>UserName</Key><Value>alice</Value></String>
+          <String><Key>Password</Key><Value>p2</Value></String>
+          <String><Key>otp</Key><Value>otpauth://totp/x?secret=ABC</Value></String>
+          <String><Key>recovery</Key><Value>kitten</Value></String>
+        </Entry>
+      </Group>
+    </Group>
+  </Root>
+</KeePassFile>"#,
+    )
+    .unwrap();
+
+    bypass(&env)
+        .args(["import", "--format", "keepass"])
+        .arg(&src)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("imported 1 entry from KeePass"));
+
+    bypass(&env)
+        .args(["show", "email/gmail"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("p2"))
+        .stdout(predicate::str::contains("login: alice"))
+        .stdout(predicate::str::contains("recovery: kitten"))
+        .stdout(predicate::str::contains(
+            "otpauth: otpauth://totp/x?secret=ABC",
+        ));
+}
