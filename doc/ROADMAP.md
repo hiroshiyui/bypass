@@ -162,6 +162,15 @@ Actual dependencies as of Phase 5.2:
 - [x] Pass env vars (`PASSWORD_STORE_DIR`, etc.) to extensions
 - [x] `bypass ext <name> [args]` dispatch
 
+### Milestone 4.4: Backup, migration, and GPG key rotation ([ADR-0026](adr/0026-export-import-for-backup-and-rotation.md))
+- [ ] **4.4.a** Tar packing/unpacking + manifest schema (with format version field) in `bypass-core`; no I/O dependencies, plaintext held in `SecretBytes` between read and tar-write
+- [ ] **4.4.b** `bypass export-encrypted --to <recipient> [--subtree <path>]` in `bypass-cli` — decrypts each entry, streams plaintext tar through `gpg --encrypt --recipient <recipient>` to stdout; one entry's plaintext in RAM at a time
+- [ ] **4.4.c** `bypass import <bundle>` (fresh-store mode) — requires destination initialised by `bypass init <new-key>` and empty; decrypts outer tar via `gpg`, re-encrypts each entry to the destination's `.gpg-id`, applies `storage_fs::overwrite_then_unlink` ([ADR-0008](adr/0008-secure-delete-via-overwrite.md)) on any prior file at the target path
+- [ ] **4.4.d** `bypass import --in-place <bundle>` — rewrites `.gpg-id` first, then re-encrypts every entry, wrapped in a single `Re-encrypt store for <new-key>` commit so paired peers can fast-forward without ancestry breakage ([ADR-0011](adr/0011-sync-semantics-hybrid.md), [ADR-0014](adr/0014-sync-metadata-and-ordering.md))
+- [ ] **4.4.e** Round-trip integration tests in `crates/bypass-cli/tests/end_to_end.rs` — key-A→key-B export+fresh-import asserts every entry decrypts to the same plaintext; a second test exercises `--in-place` and asserts the git log shows the single rewrite commit with prior ancestry intact
+- [ ] **4.4.f** Help-text and README docs covering the forward-confidentiality caveat (old ciphertext an attacker exfiltrated stays readable if the old private key leaks; rotate the underlying *passwords* for entries that matter) and the git-history caveat (prior commits retain old ciphertexts; users wanting them scrubbed need `git filter-repo`/BFG — bypass does not ship a history-rewriting command)
+- [ ] **4.4.g** *(stretch)* `bypass doctor` warning when `.gpg-id` names a key whose primary algorithm is RSA-1024 or DSA, nudging toward rotation
+
 ---
 
 ## Phase 5 — Sync

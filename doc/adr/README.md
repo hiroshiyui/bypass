@@ -44,3 +44,4 @@ Process and conventions are defined in
 | 0023 | [Browser extension architecture: Manifest V3, single TypeScript codebase](0023-browser-extension-architecture.md) | Accepted |
 | 0024 | [Android FFI surface via UniFFI](0024-android-ffi-via-uniffi.md) | Accepted |
 | 0025 | [Android UI architecture: Compose, single Activity, manual DI](0025-android-ui-architecture.md) | Accepted |
+| 0026 | [`export` / `import` for backup, migration, and GPG key rotation](0026-export-import-for-backup-and-rotation.md) | Proposed |
