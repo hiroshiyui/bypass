@@ -13,10 +13,14 @@ dated heading and the running notes will start a fresh
 
 ## [Unreleased]
 
-The pre-release work that will become `v0.1.0`. Covers everything
-between the initial commit (`affa4ed`, project scaffold) and the
-post-eval CLI polish (`e507a43`). Three frontends now build green
-on CI: the Linux CLI (Phases 1–6), the Firefox + Chrome browser
+_No changes yet._
+
+## [0.1.0] - 2026-05-23
+
+First tagged release. Covers everything between the initial
+commit (`affa4ed`, project scaffold) and the post-eval CLI
+polish (`e507a43`). Three frontends now build green on CI:
+the Linux CLI (Phases 1–6), the Firefox + Chrome browser
 extension (Phase 7), and the Android app (Phase 8). See
 [`doc/ROADMAP.md`](doc/ROADMAP.md) for the phase-by-phase plan
 each item lives under.
@@ -218,4 +222,5 @@ Not yet shipped, tracked in [`doc/ROADMAP.md`](doc/ROADMAP.md):
 - **Android icon**: placeholder vector "by" wordmark; replace
   before any Play Store submission.
 
-[Unreleased]: https://github.com/hiroshiyui/bypass/compare/affa4ed...HEAD
+[Unreleased]: https://github.com/hiroshiyui/bypass/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/hiroshiyui/bypass/releases/tag/v0.1.0
