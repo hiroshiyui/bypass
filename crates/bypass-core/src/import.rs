@@ -207,7 +207,7 @@ pub fn prepare(
     // lossiness happens (embedded newlines in field values get
     // flattened to `\n`).
     let mut prepared: Vec<PreparedEntry> = Vec::with_capacity(entries.len());
-    for (entry, path) in entries.into_iter().zip(final_paths.into_iter()) {
+    for (entry, path) in entries.into_iter().zip(final_paths) {
         let body = serialise_body(&entry, path.as_str(), &mut report);
         prepared.push(PreparedEntry { path, body });
     }

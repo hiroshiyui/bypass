@@ -190,26 +190,18 @@ fn build_entry(
             let value = text_of_child(child, "Value").unwrap_or_default();
             match key.as_str() {
                 "Title" => title = value,
-                "UserName" => {
-                    if !value.is_empty() {
-                        username = Some(value);
-                    }
+                "UserName" if !value.is_empty() => {
+                    username = Some(value);
                 }
                 "Password" => password = value,
-                "URL" => {
-                    if !value.is_empty() {
-                        url = Some(value);
-                    }
+                "URL" if !value.is_empty() => {
+                    url = Some(value);
                 }
-                "Notes" => {
-                    if !value.is_empty() {
-                        notes = Some(value);
-                    }
+                "Notes" if !value.is_empty() => {
+                    notes = Some(value);
                 }
-                "otp" | "TOTP" | "totp" => {
-                    if !value.is_empty() {
-                        totp = Some(value);
-                    }
+                "otp" | "TOTP" | "totp" if !value.is_empty() => {
+                    totp = Some(value);
                 }
                 _ if !key.is_empty() && !value.is_empty() => {
                     fields.push((key, value));
